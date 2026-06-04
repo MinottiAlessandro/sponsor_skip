@@ -1,102 +1,158 @@
-# ad_skip — browser extension
+<p align="center">
+  <img src="icons/icon128.png" width="96" alt="ad_skip logo" />
+</p>
 
-Detects and skips **in-video creator-read sponsor segments** on YouTube using a
-**bundled on-device model** — a fine-tuned multilingual token classifier that runs
-entirely in your browser via Transformers.js (ONNX Runtime Web). No server, no
-account, nothing to install. A local-LLM (Ollama) backend is also available for
-development. The detector is a swappable module.
+<h1 align="center">ad_skip</h1>
+
+<p align="center">
+  <b>Automatically skip in-video, creator-read sponsorships on YouTube — fully on your device.</b><br/>
+  <sub>Not YouTube's own ads — the "this video is sponsored by…" reads baked into the video.</sub>
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/Manifest-V3-3367d6" alt="Manifest V3" />
+  <img src="https://img.shields.io/badge/detection-100%25%20on--device-2ea44f" alt="On-device" />
+  <img src="https://img.shields.io/badge/privacy-no%20servers-2ea44f" alt="Private" />
+  <img src="https://img.shields.io/badge/languages-EN%20·%20IT%20·%20ES%20·%20FR%20·%20DE-f0a500" alt="Languages" />
+</p>
+
+<p align="center">
+  <a href="https://ko-fi.com/alessandromino">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" />
+  </a>
+</p>
+
+---
+
+## What it does
+
+Creators get paid to read out sponsor spots mid-video ("today's video is brought to
+you by…"). **ad_skip** finds those segments from the video's captions and skips them
+for you — automatically, or with a one-click button.
+
+It runs a small AI model **entirely in your browser**. No account, no servers, no
+API keys — the transcript and everything else **never leave your device**.
+
+- 🎯 **Detects creator-read sponsorships** (and optionally self-promo & like/subscribe begs), including the lead-in "but first…" segue.
+- 🟡 **Marks them in yellow** on the progress bar, SponsorBlock-style.
+- ⏭️ **Auto-skips** (with an optional cancelable countdown) or shows a **Skip** button — your choice.
+- 🌍 **Multilingual** — English, Italian, Spanish, French, German.
+- 🔒 **100% private** — on-device detection; nothing is uploaded.
+- ⚡ **Instant on known videos** via the community SponsorBlock database (queried privately).
+
+## Privacy first
+
+This is the whole point. Detection uses a bundled neural model executed locally
+through WebAssembly. The only network requests ad_skip makes are:
+
+| Request | Why | Private? |
+|---|---|---|
+| YouTube captions | to read the transcript it analyzes | same requests the player already makes |
+| SponsorBlock (optional) | instant skips on already-labeled videos | queried by a **hash prefix** of the video ID, so the service never learns which video you're watching |
+
+No telemetry. No analytics. No sponsor data sent anywhere.
+
+## Install
+
+> ad_skip isn't on the Chrome Web Store yet — install it unpacked (Chrome, Edge, Brave, or any Chromium browser).
+
+**Recommended (ready to run):**
+
+1. Download the latest **[Release](../../releases)** `.zip` (it includes the model) and unzip it.
+2. Go to `chrome://extensions`.
+3. Turn on **Developer mode** (top-right).
+4. Click **Load unpacked** and select the unzipped folder.
+5. Open any YouTube video — that's it.
+
+<sub>Cloning the repo instead? The ~129 MB model file isn't stored in git — grab it from the Release, or see [Development](#development).</sub>
+
+## Using it
+
+Click the toolbar icon to open the popup. It has four tabs:
+
+- **Status** — pick how to act on sponsors (**Auto-skip · Button · Off**), see the segments found in the current video (click one to jump to it), and any error.
+- **Skipping** — countdown length & style, which categories to skip (sponsor / self-promo / interaction), confidence, and where the status indicator shows.
+- **Detector** — SponsorBlock toggle, the detection backend, **Reset sponsor cache**, and **Test the model**.
+- **Look** — light / dark / auto theme.
+
+While a video is analyzed, a small pill appears top-left of the player; when it's
+done you'll see the sponsor sections highlighted **yellow** on the progress bar. In
+auto mode it jumps past them (you can cancel any single skip).
+
+> 💡 If a video fails to analyze, the toolbar icon shows a red **!** — open the popup to read why.
+
+## Languages
+
+Trained on native YouTube transcripts in **English, Italian, Spanish, French, and
+German**. Detection quality is strongest in ES/IT/EN; German is the weakest of the
+five but still works. Other languages may partially work thanks to the multilingual
+base model, but aren't officially supported.
 
 ## How it works
 
-1. `inject.js` (page MAIN world) reads the YouTube player response → caption tracks.
-2. `content.js` fetches the transcript (`timedtext` JSON), then asks the background
-   worker for sponsor segments and runs the skip UI.
-3. `background.js` checks the SponsorBlock fast-path, then runs the on-device model
-   in an **offscreen document** (`offscreen.js` + `local_detector.js`): a sliding
-   window over the cues → per-token sponsor probability → per-cue vote → contiguous
-   sponsor cues become segments (gap-merged, over-skip-guarded). Cached per video.
-4. Skip: **auto-skip**, **"Skip ▶" button**, or **off** (toggle in the popup).
+1. ad_skip reads the video's caption track (the same one YouTube's player uses).
+2. For videos the SponsorBlock community has already labeled, it uses those
+   human-verified segments instantly (queried privately).
+3. Otherwise it runs a fine-tuned multilingual **token-classification model**
+   (distilBERT-based) over the transcript via **Transformers.js / ONNX Runtime Web**,
+   tags sponsor/self-promo/interaction cues, groups them into segments, and skips.
 
-## UX features
+A confidence-biased decoder keeps it on the safe side — it would rather start a skip
+a second late than cut into real content.
 
-All settings live in the **toolbar popup**, organized into tabs — **Status**
-(mode + detected segments + errors), **Skipping**, **Detector**, **Look**. It
-auto-saves; there's no separate options page.
+## Advanced
 
-- **Status indicator** (no click needed): an on-player pill (top-left, auto-shifts
-  below YouTube's "Includes paid promotion" overlay) shows a spinner while working,
-  then "✓ N sponsors found", or a red "!" on failure. The toolbar icon also shows a
-  per-tab badge: "…" working → count when done (green/grey), "!" on error — click the
-  icon to open the popup and expand the reason. Configurable in **Skipping**:
-  Both / On-page only / Badge only / Off.
-- **Yellow progress-bar markers** over sponsor sections, re-applied live via a
-  MutationObserver so they survive YouTube rebuilding the bar (no reload needed).
-- **Auto-skip countdown**: "Auto-skip in Xs" (length in **Skipping**, default 3s;
-  0 = instant) with click-to-cancel. *grace* counts down inside the ad, *pre-roll*
-  skips from the very start.
-- **Popup → Status**: lists the current video's sponsors with timestamps + how they
-  were found ("via …"); click a segment to jump. Quick Auto/Button/Off pills.
-- **Theme** (**Look** tab): Auto / Light / Dark (shared `theme.js`).
-- **Custom model** (**Detector** tab, advanced): swap the bundled on-device model for
-  any Transformers.js ONNX model (HF repo id or URL), or switch to the Ollama LLM.
+All in the **Detector** tab:
 
-## Setup
+- **Custom model** — point ad_skip at your own Transformers.js-compatible ONNX
+  token-classifier (a Hugging Face repo id like `you/your-model`, or a URL). Labels
+  must be `O, sponsor, selfpromo, interaction`.
+- **Local LLM (Ollama)** — for development, switch detection to a local LLM. Run
+  `OLLAMA_ORIGINS=* ollama serve` so the extension can reach it.
+- **Reset sponsor cache** — clears cached results so videos are re-analyzed.
 
-1. Chrome → `chrome://extensions` → enable **Developer mode**.
-2. **Load unpacked** → select this `extension/` folder.
-3. Open a YouTube video. That's it — the model is bundled and runs on-device.
+## Limitations
 
-The on-device model files live under `model/` (INT8 ONNX, ~135 MB) and the
-Transformers.js runtime + ONNX WASM under `vendor/` — all loaded locally, no
-network. First detection on a fresh session loads the model into the offscreen
-document (a second or two); inference is then ~15 ms per window.
+- Needs a caption/transcript to work; videos with captions disabled can't be analyzed.
+- YouTube rate-limits caption downloads — heavy use can briefly fail (the icon shows it); it recovers on its own.
+- It targets **creator-read sponsorships**, not YouTube's own ad breaks.
+- Boundaries are caption-granular (a second or two), and it's tuned for precision, so it occasionally misses a softer sponsor read rather than risk over-skipping.
 
-### Updating the on-device model
+## Development
 
-The detector is a fine-tuned multilingual token classifier (EN/IT/ES/FR/DE), trained
-on native SponsorBlock-labeled transcripts. To ship a new model:
+The extension is plain MV3 + JavaScript — no build step to load it. The on-device
+model is the only piece not in git (too large): it lives under `model/onnx/` and is
+produced by a separate training pipeline. The Transformers.js runtime in `vendor/`
+is bundled with esbuild.
 
-```bash
-# retrain (see spike/train_prod.py + spike/eval_prod.py), then:
-spike/install_model.sh spike/model_prod 2026.06.04   # export INT8 ONNX -> extension/model/ + stamp version
+```
+src/        content script, background worker, offscreen model host, detector
+popup/      the tabbed UI
+model/      tokenizer + config (+ onnx weights, provided via Release)
+vendor/     Transformers.js + ONNX Runtime WASM
+icons/      app icons
 ```
 
-This rewrites `extension/model/` (config, tokenizer, `onnx/model_quantized.onnx`) and
-`model_version.json`. Reload the extension to pick it up; the version shows on the
-popup's **Detector** tab. The Transformers.js runtime (`vendor/transformers.bundle.mjs`)
-is model-agnostic, so it's unchanged. If the label set changes, update `SPONSOR_CLASS`
-in `src/local_detector.js`.
+PRs and issues welcome.
 
-### Optional: Ollama backend (development)
+## Credits
 
-Set **Detector → Detection backend → Local LLM via Ollama** in the popup to use a local LLM
-instead. Then:
+Built on the shoulders of [SponsorBlock](https://sponsor.ajay.app/),
+[🤗 Transformers.js](https://github.com/huggingface/transformers.js), and
+[ONNX Runtime Web](https://onnxruntime.ai/). Sponsor labels for training come from
+the SponsorBlock community database.
 
-```bash
-curl -fsSL https://ollama.com/install.sh | sh
-ollama pull gemma3n:e4b            # the Gemma E4B build you want
-OLLAMA_ORIGINS=* ollama serve      # so a chrome-extension:// origin isn't CORS-blocked
-```
+## Support
 
-The extension calls `http://localhost:11434/api/generate` by default (configurable).
+If ad_skip saves you time, you can buy me a coffee — it genuinely helps and is hugely
+appreciated. ☕
 
-## Status / limits
+<p>
+  <a href="https://ko-fi.com/alessandromino">
+    <img src="https://ko-fi.com/img/githubbutton_sm.svg" alt="Support me on Ko-fi" />
+  </a>
+</p>
 
-- **SponsorBlock fast-path**: known videos use crowdsourced human-verified segments
-  (queried privately by SHA-256 hash-prefix) and skip the model entirely. Toggle in
-  options. Unknown videos fall back to the on-device model.
-- **On-device model**: fine-tuned `distilbert-base-multilingual-cased` token
-  classifier (EN/IT/ES/FR/DE), trained on the SponsorBlock corpus + translation
-  augmentation. Held-out span F1 ~72–78% per language, high precision (over-skip-
-  averse). Fully private; nothing leaves the browser.
-- The model runs in an offscreen document (the service worker can't keep 135 MB
-  resident). Long transcripts are processed as a sliding window over cues; total
-  lines capped at `maxLines` to bound runtime.
-- `detect_test.py` is a CLI harness mirroring the Ollama backend; `spike/` holds the
-  training/eval/export pipeline for the on-device model.
-- The Ollama dev backend uses free-text output + quote-based extraction (NOT
-  `format:"json"`, which collapses small models).
-- Results are cached per video after the first view.
-- Rapid video-switching is throttled: detection is debounced ~700ms and the
-  in-flight transcript fetch + LLM calls for an abandoned video are aborted, so the
-  user can't pile up a queue for the model.
+## License
+
+Released under the **MIT License**.
