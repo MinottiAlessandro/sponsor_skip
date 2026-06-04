@@ -1,0 +1,130 @@
+/* ad_skip popup — branded, tabbed settings + status.
+   Personal look: yellow (#FFD21E) skip-accent on a YouTube-native surface. */
+:root {
+  --accent: #ffd21e;
+  --accent-ink: #1a1500;
+  --bg: #ffffff;
+  --surface: #f7f7f7;
+  --surface-2: #efefef;
+  --text: #0f0f0f;
+  --muted: #606060;
+  --border: #e5e5e5;
+  --danger: #d33;
+}
+html[data-theme="dark"] {
+  --bg: #0f0f0f;
+  --surface: #1c1c1c;
+  --surface-2: #272727;
+  --text: #f1f1f1;
+  --muted: #aaaaaa;
+  --border: #303030;
+  --danger: #ff6b6b;
+}
+
+* { box-sizing: border-box; }
+/* Fixed-height flex column so switching tabs never needs the popup window to
+   resize (Chrome only measures the popup once, on first render). main scrolls. */
+body {
+  width: 340px;
+  height: 500px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  font: 13px/1.45 "Roboto", "YouTube Sans", system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+/* Header / brand */
+.hd {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.hd .logo { width: 26px; height: 26px; border-radius: 7px; }
+.brand { font-weight: 700; font-size: 15px; letter-spacing: 0.2px; display: flex; flex-direction: column; line-height: 1.1; }
+.brand .tag { font-weight: 500; font-size: 10px; color: var(--muted); letter-spacing: 0.3px; }
+.hd .ver { margin-left: auto; font-size: 10px; color: var(--muted); }
+
+/* Tabs */
+.tabs { flex: none; display: flex; padding: 0 8px; border-bottom: 1px solid var(--border); }
+.tab {
+  appearance: none; border: 0; background: none; cursor: pointer;
+  padding: 9px 10px; font: inherit; font-weight: 600; font-size: 12px;
+  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+
+main { flex: 1 1 auto; min-height: 0; padding: 12px 14px; overflow-y: auto; }
+.panel { display: none; }
+.panel.active { display: block; }
+
+/* Mode pills */
+.modes { display: flex; gap: 6px; margin-bottom: 10px; }
+.modes .m {
+  flex: 1; padding: 7px 4px; cursor: pointer; font: inherit; font-weight: 600;
+  color: var(--text); background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; transition: background .12s, border-color .12s;
+}
+.modes .m:hover { background: var(--surface-2); }
+.modes .m.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+
+/* Fields */
+.field { margin: 11px 0; }
+.field > label { display: block; font-weight: 600; margin-bottom: 4px; }
+.field .hint { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.check { display: flex; align-items: center; gap: 8px; font-weight: 500; margin: 8px 0; cursor: pointer; }
+.check input { accent-color: var(--accent); width: 15px; height: 15px; }
+select, input[type="text"], input[type="number"] {
+  width: 100%; padding: 7px 9px; font: inherit; color: var(--text);
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+}
+.row { display: flex; gap: 8px; }
+.row > * { flex: 1; }
+.sub { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
+       color: var(--muted); margin: 14px 0 4px; }
+
+button.btn {
+  appearance: none; cursor: pointer; font: inherit; font-weight: 600;
+  padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--text);
+}
+button.btn:hover { background: var(--surface-2); }
+button.btn.accent { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+a { color: #3ea6ff; cursor: pointer; text-decoration: none; }
+a:hover { text-decoration: underline; }
+.muted { color: var(--muted); }
+
+/* Segment list */
+.seg {
+  display: flex; align-items: center; gap: 8px; padding: 7px 8px; cursor: pointer;
+  border-radius: 8px; transition: background .1s;
+}
+.seg:hover { background: var(--surface); }
+.seg .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+.seg .cat { font-weight: 600; text-transform: capitalize; }
+.seg .time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.via { color: var(--muted); font-size: 11px; margin: 2px 0 8px; }
+.via b { color: var(--text); font-weight: 600; }
+
+/* Error banner (click to expand) */
+.error {
+  border: 1px solid var(--danger); border-radius: 8px; padding: 9px 11px; margin-bottom: 10px;
+  background: color-mix(in srgb, var(--danger) 10%, transparent); cursor: pointer;
+}
+.error .etitle { font-weight: 700; color: var(--danger); display: flex; align-items: center; gap: 6px; }
+.error .ereason { margin-top: 6px; font-size: 11px; color: var(--muted); white-space: pre-wrap;
+                  word-break: break-word; display: none; }
+.error.open .ereason { display: block; }
+.error .caret { margin-left: auto; font-size: 11px; color: var(--muted); }
+
+/* Toast */
+.toast {
+  position: fixed; left: 14px; right: 14px; bottom: 12px; text-align: center;
+  padding: 8px; border-radius: 8px; background: var(--accent); color: var(--accent-ink);
+  font-weight: 600; box-shadow: 0 2px 10px rgba(0,0,0,.25);
+}

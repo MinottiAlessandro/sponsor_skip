@@ -1,0 +1,17 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>ad_skip offscreen detector</title>
+  </head>
+  <body>
+    <!-- Hidden offscreen document: hosts the Transformers.js model and runs
+         inference. Service workers can't hold a 135 MB model in memory across
+         their short lifecycle, so detection lives here. -->
+    <!-- Transformers.js imported ORT via a bare specifier ("onnxruntime-web/webgpu");
+         since extensions have no bundler/import-map under MV3 CSP, that import in
+         vendor/transformers.web.min.js was patched to the relative local ORT build
+         (vendor/ort.webgpu.bundle.min.mjs). -->
+    <script type="module" src="offscreen.js"></script>
+  </body>
+</html>

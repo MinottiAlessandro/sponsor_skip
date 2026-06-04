@@ -1,0 +1,135 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="stylesheet" href="popup.css" />
+    <script src="../theme.js"></script>
+  </head>
+  <body>
+    <header class="hd">
+      <img class="logo" src="../icons/icon48.png" alt="" />
+      <div class="brand">ad_skip<span class="tag">in-video sponsor skipper</span></div>
+      <span class="ver" id="modelinfo"></span>
+    </header>
+
+    <nav class="tabs">
+      <button class="tab active" data-tab="status">Status</button>
+      <button class="tab" data-tab="skipping">Skipping</button>
+      <button class="tab" data-tab="detector">Detector</button>
+      <button class="tab" data-tab="look">Look</button>
+    </nav>
+
+    <main>
+      <!-- ───────────────── STATUS ───────────────── -->
+      <section class="panel active" data-panel="status">
+        <div class="modes">
+          <button class="m" data-mode="auto">Auto-skip</button>
+          <button class="m" data-mode="button">Button</button>
+          <button class="m" data-mode="off">Off</button>
+        </div>
+        <div id="error" class="error" hidden>
+          <div class="etitle">⚠ Couldn't analyze this video <span class="caret">▸ details</span></div>
+          <div class="ereason" id="ereason"></div>
+        </div>
+        <div id="result" class="muted">Open a YouTube video to detect sponsors.</div>
+      </section>
+
+      <!-- ───────────────── SKIPPING ───────────────── -->
+      <section class="panel" data-panel="skipping">
+        <div class="field">
+          <label for="mode2">When a sponsor is found</label>
+          <select id="mode2">
+            <option value="auto">Auto-skip it</option>
+            <option value="button">Show a "Skip" button</option>
+            <option value="off">Do nothing</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="autoSkipDelay">Auto-skip countdown (seconds)</label>
+          <input type="number" id="autoSkipDelay" min="0" max="10" step="1" />
+          <span class="hint">How long "Auto-skip in Xs" shows before jumping. 0 = instant.</span>
+        </div>
+        <div class="field">
+          <label for="countdownMode">Countdown style</label>
+          <select id="countdownMode">
+            <option value="grace">Grace — count down inside the ad (plays the start)</option>
+            <option value="preroll">Pre-roll — skip from the very start</option>
+          </select>
+        </div>
+        <div class="sub">Skip which categories</div>
+        <label class="check"><input type="checkbox" id="cat_sponsor" /> Paid sponsorships</label>
+        <label class="check"><input type="checkbox" id="cat_selfpromo" /> Self-promotion (merch / Patreon)</label>
+        <label class="check"><input type="checkbox" id="cat_interaction" /> Like / subscribe reminders</label>
+        <div class="field">
+          <label for="minConfidence">Minimum confidence</label>
+          <input type="number" id="minConfidence" min="0" max="1" step="0.05" />
+          <span class="hint">0–1. Higher = fewer false skips, more missed sponsors.</span>
+        </div>
+        <div class="field">
+          <label for="statusIndicator">Status indicator</label>
+          <select id="statusIndicator">
+            <option value="both">On-page pill + toolbar badge</option>
+            <option value="page">On-page pill only</option>
+            <option value="badge">Toolbar badge only</option>
+            <option value="off">Off</option>
+          </select>
+        </div>
+      </section>
+
+      <!-- ───────────────── DETECTOR ───────────────── -->
+      <section class="panel" data-panel="detector">
+        <label class="check"><input type="checkbox" id="useSponsorBlock" /> Use the SponsorBlock database first</label>
+        <span class="hint">Known videos get instant, human-verified skips (queried privately). Unknown videos use the on-device model.</span>
+        <div class="field">
+          <label for="detector">Detection backend</label>
+          <select id="detector">
+            <option value="local">On-device model (no setup, private)</option>
+            <option value="ollama">Local LLM via Ollama (developer)</option>
+          </select>
+        </div>
+        <div id="localRow">
+          <div class="field">
+            <label for="customModel">Custom model (advanced)</label>
+            <input type="text" id="customModel" placeholder="empty = bundled model" />
+            <span class="hint">Load a different Transformers.js ONNX model — a Hugging Face repo id (<code>user/model</code>) or URL. Labels must be O, sponsor, selfpromo, interaction.</span>
+          </div>
+        </div>
+        <div id="ollamaRow">
+          <div class="row">
+            <div class="field"><label for="endpoint">Endpoint</label>
+              <input type="text" id="endpoint" placeholder="http://localhost:11434/api/generate" /></div>
+            <div class="field"><label for="model">Model</label>
+              <input type="text" id="model" placeholder="gemma4:latest" /></div>
+          </div>
+          <span class="hint">Run <code>OLLAMA_ORIGINS=* ollama serve</code> so the extension can reach it.</span>
+        </div>
+        <div class="field">
+          <label for="maxSegmentSeconds">Max segment length (seconds)</label>
+          <input type="number" id="maxSegmentSeconds" min="30" max="1800" step="30" />
+          <span class="hint">Segments longer than this are dropped as likely errors (prevents huge over-skips).</span>
+        </div>
+        <div class="sub">Maintenance</div>
+        <div class="row">
+          <button class="btn" id="resetcache" type="button">Reset sponsor cache</button>
+          <button class="btn" id="opentest" type="button">Test the model</button>
+        </div>
+      </section>
+
+      <!-- ───────────────── LOOK ───────────────── -->
+      <section class="panel" data-panel="look">
+        <div class="field">
+          <label for="theme">Theme</label>
+          <select id="theme">
+            <option value="auto">Auto (match system)</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+        </div>
+        <p class="muted" style="font-size:11px">ad_skip detects creator-read sponsorships on-device and skips them. Yellow marks show sponsor sections on the progress bar.</p>
+      </section>
+    </main>
+
+    <div id="toast" class="toast" hidden></div>
+    <script src="popup.js"></script>
+  </body>
+</html>

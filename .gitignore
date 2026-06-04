@@ -1,0 +1,21 @@
+# ── OS / editor cruft ──────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.vscode/
+.idea/
+
+# ── On-device model weights (large binary build artifact) ──────────────────
+# model/onnx/model_quantized.onnx is ~129 MB — over GitHub's 100 MB file limit,
+# so a push would be rejected. It's regenerated from a trained checkpoint with:
+#   spike/install_model.sh spike/model_prod <version>
+# The small spec files (config.json, tokenizer.json, model_version.json) ARE
+# committed, so only the weights need regenerating after a clone.
+model/onnx/
+
+# ── Optional: vendored runtime (~62 MB of ONNX WASM + the bundled lib) ──────
+# Regenerable: spike/node/build_transformers_bundle.sh, plus copying the
+# onnxruntime-web *.wasm files into vendor/. Uncomment for a source-only repo
+# (the extension then won't run until vendor/ is rebuilt).
+# vendor/
