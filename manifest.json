@@ -12,7 +12,9 @@
   },
   "host_permissions": [
     "https://www.youtube.com/*",
-    "https://sponsor.ajay.app/*",
+    "https://sponsor.ajay.app/*"
+  ],
+  "optional_host_permissions": [
     "http://localhost/*",
     "http://127.0.0.1/*",
     "https://huggingface.co/*",
@@ -28,6 +30,7 @@
         "https://www.youtube.com/*"
       ],
       "js": [
+        "src/defaults.js",
         "src/content.js"
       ],
       "css": [

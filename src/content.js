@@ -1,20 +1,13 @@
 // content.js — runs in the ISOLATED world on youtube.com.
 // Orchestrates: inject MAIN-world script -> receive caption tracks -> fetch the
-// transcript -> ask the background worker (local LLM) for sponsor segments ->
-// run the skip controller + on-player UI.
+// transcript -> ask the background worker (the on-device model, or Ollama in dev)
+// for sponsor segments -> run the skip controller + on-player UI.
 
 const LANG_PRIORITY = ["en", "it", "es", "fr", "de"];
 
-const DEFAULTS = {
-  mode: "button", // "auto" | "button" | "off"
-  minConfidence: 0.6,
-  categories: { sponsor: true, selfpromo: true, interaction: false },
-  autoSkipDelay: 3, // seconds of "Auto-skip in Xs" countdown before the jump
-  countdownMode: "grace", // "grace" = count down inside the segment (plays the
-  // start); "preroll" = count down before it, then skip from the very start
-  statusIndicator: "both", // "both" | "page" | "badge" | "off"
-};
-
+// DEFAULTS and filterSegments are provided by src/defaults.js, which the manifest
+// loads as a content script just before this one (shared so the popup filters the
+// same way).
 let settings = { ...DEFAULTS };
 let controller = null; // current SkipController
 let currentVideoId = null;
@@ -47,7 +40,7 @@ chrome.storage.onChanged.addListener((changes, area) => {
     controller?.updateSettings(settings);
     // Re-apply the category/confidence filter live so toggling e.g. "self-promo"
     // updates the timeline markers without re-analyzing or reloading.
-    controller?.setSegments(filterSegments(lastRawSegments));
+    controller?.setSegments(filterSegments(lastRawSegments, settings));
     if (!pillEnabled()) hideStatus();
   }
 });
@@ -186,9 +179,6 @@ async function fetchCues(track, signal) {
 }
 
 // --------------------------------------------------------------------------- //
-// Pipeline
-// --------------------------------------------------------------------------- //
-// --------------------------------------------------------------------------- //
 // On-page status indicator — lets the user see, without clicking, whether we're
 // still working or done.
 // --------------------------------------------------------------------------- //
@@ -257,7 +247,7 @@ function reportError(videoId, reason) {
 }
 
 // Cancel everything tied to a video we're leaving: the debounce, the local
-// transcript fetch, and the background's running LLM calls for it.
+// transcript fetch, and the background's running detection for it.
 function abortInFlight(videoId) {
   clearTimeout(debounceTimer);
   if (detectionAbort) {
@@ -269,6 +259,9 @@ function abortInFlight(videoId) {
   }
 }
 
+// --------------------------------------------------------------------------- //
+// Detection pipeline
+// --------------------------------------------------------------------------- //
 function onVideo(msg) {
   if (msg.videoId === currentVideoId) return; // already handled this video
   const previous = currentVideoId;
@@ -295,7 +288,7 @@ async function runDetection(msg) {
   setStatus(true, "Analyzing sponsors…");
 
   // Phase 1: ask the background for cache + SponsorBlock first — no transcript
-  // fetch needed unless this falls through to the LLM.
+  // fetch needed unless this falls through to on-device detection.
   let resp;
   try {
     resp = await chrome.runtime.sendMessage({
@@ -309,7 +302,7 @@ async function runDetection(msg) {
   }
   if (stale()) return;
 
-  // Phase 2: only fetch the transcript + run the LLM when the fast path missed.
+  // Phase 2: only fetch the transcript + run the detector when the fast path missed.
   if (resp && resp.needTranscript) {
     let tracks, audioLang;
     try {
@@ -342,7 +335,7 @@ async function runDetection(msg) {
       return;
     }
 
-    console.log("[ad_skip] requesting LLM detection from background…");
+    console.log("[ad_skip] requesting detection from background…");
     try {
       resp = await chrome.runtime.sendMessage({
         type: "detect",
@@ -362,12 +355,12 @@ async function runDetection(msg) {
   if (!resp || resp.aborted) return;
   if (resp.error) {
     console.warn("[ad_skip] detection error:", resp.error);
-    setStatus(false, "Detection failed", 5000);
+    setStatus(false, "Detection failed", 8000, true);
     return;
   }
 
   lastRawSegments = resp.segments || [];
-  const segments = filterSegments(lastRawSegments);
+  const segments = filterSegments(lastRawSegments, settings);
   lastSource = resp.source || null;
   console.log(`[ad_skip] ${segments.length} segment(s) for ${msg.videoId} (${lastSource || "?"})`, segments);
   const n = segments.length;
@@ -377,14 +370,6 @@ async function runDetection(msg) {
   const video = document.querySelector("video.html5-main-video, video");
   if (!video) return;
   controller = new SkipController(video, segments, settings);
-}
-
-function filterSegments(segments) {
-  return segments
-    .filter((s) => settings.categories[s.category] !== false)
-    .filter((s) => (s.confidence ?? 1) >= settings.minConfidence)
-    .filter((s) => s.end > s.start)
-    .sort((a, b) => a.start - b.start);
 }
 
 // --------------------------------------------------------------------------- //

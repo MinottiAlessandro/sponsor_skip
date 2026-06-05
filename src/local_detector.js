@@ -4,10 +4,10 @@
 //
 // Mapping trick: we tokenize each cue separately and concatenate the ids ([CLS] +
 // cue0 + cue1 + ... + [SEP]), so we know exactly which tokens belong to which cue
-// without needing char offsets. A cue is "sponsor" if enough of its tokens are
-// predicted sponsor; contiguous sponsor cues become a segment with the cues'
-// absolute timestamps. Result is then gap-merged and over-skip-guarded — the same
-// post-processing the eval uses.
+// without needing char offsets. Each cue gets a mean P(sponsor) across its tokens;
+// a hysteresis scan over those per-cue probabilities turns confident runs into
+// segments with the cues' absolute timestamps. Result is then gap-merged and
+// over-skip-guarded — the same post-processing the eval uses.
 
 const MAX_LEN = 384;
 const SPONSOR_CLASS = 1; // label order: 0=O, 1=sponsor, 2=selfpromo, 3=interaction
@@ -22,12 +22,16 @@ export function cueWindows(n, size, overlap) {
   return out;
 }
 
-function mkSeg(cues, a, b) {
+function mkSeg(cues, a, b, prob) {
+  // confidence = mean P(sponsor) over the cues in the run (not a fixed constant),
+  // so the user's "minimum confidence" filter is meaningful for model output too.
+  let sum = 0;
+  for (let i = a; i <= b; i++) sum += prob[i];
   return {
     start: cues[a].start,
     end: cues[b].start + (cues[b].duration || 0),
     category: "sponsor",
-    confidence: 0.8,
+    confidence: Math.round((sum / (b - a + 1)) * 100) / 100,
   };
 }
 
@@ -37,8 +41,10 @@ export function mergeSegments(segs, gap = 5) {
   const out = [s[0]];
   for (let i = 1; i < s.length; i++) {
     const last = out[out.length - 1];
-    if (s[i].start - last.end <= gap) last.end = Math.max(last.end, s[i].end);
-    else out.push(s[i]);
+    if (s[i].start - last.end <= gap) {
+      last.end = Math.max(last.end, s[i].end);
+      if (s[i].confidence != null) last.confidence = Math.max(last.confidence ?? 0, s[i].confidence);
+    } else out.push(s[i]);
   }
   return out;
 }
@@ -135,9 +141,9 @@ export async function detectLocal(cues, { tokenizer, model, Tensor }, opts = {})
   let s = null;
   for (let i = 0; i < cues.length; i++) {
     if (s === null && sm[i] >= enterThreshold) s = i;
-    else if (s !== null && sm[i] < exitThreshold) { segs.push(mkSeg(cues, s, i - 1)); s = null; }
+    else if (s !== null && sm[i] < exitThreshold) { segs.push(mkSeg(cues, s, i - 1, sm)); s = null; }
   }
-  if (s !== null) segs.push(mkSeg(cues, s, cues.length - 1));
+  if (s !== null) segs.push(mkSeg(cues, s, cues.length - 1, sm));
 
   const merged = mergeSegments(segs, mergeGap);
   const kept = merged.filter((g) => g.end - g.start >= minSegmentSeconds);

@@ -76,9 +76,15 @@ main { flex: 1 1 auto; min-height: 0; padding: 12px 14px; overflow-y: auto; }
 /* Fields */
 .field { margin: 11px 0; }
 .field > label { display: block; font-weight: 600; margin-bottom: 4px; }
-.field .hint { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
+.hint { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .check { display: flex; align-items: center; gap: 8px; font-weight: 500; margin: 8px 0; cursor: pointer; }
 .check input { accent-color: var(--accent); width: 15px; height: 15px; }
+.check.disabled { opacity: .5; cursor: not-allowed; }
+.check.disabled input { cursor: not-allowed; }
+/* "SponsorBlock" tag on the categories the on-device model doesn't produce */
+.tagsb { margin-left: auto; font-size: 9px; font-weight: 700; letter-spacing: .4px;
+  text-transform: uppercase; color: var(--muted); border: 1px solid var(--border);
+  border-radius: 6px; padding: 1px 5px; }
 select, input[type="text"], input[type="number"] {
   width: 100%; padding: 7px 9px; font: inherit; color: var(--text);
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;

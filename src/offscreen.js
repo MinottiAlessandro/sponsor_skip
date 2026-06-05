@@ -1,7 +1,7 @@
 // Offscreen detector: loads the fine-tuned token classifier via Transformers.js
 // (ONNX Runtime Web, all offline/bundled) and runs sliding-window detection over
 // the transcript cues. Lives in an offscreen document because a service worker
-// can't keep a 135 MB model resident across its short lifecycle.
+// can't keep a 129 MB model resident across its short lifecycle.
 //
 // IMPORTANT: the message listener is registered synchronously and Transformers.js
 // is pulled in via a *dynamic* import inside load(). If a static top-level import

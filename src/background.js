@@ -1,7 +1,10 @@
 // background.js — service worker. Receives transcripts from the content script,
-// asks the local LLM (Ollama by default) to find sponsor segments, maps the
-// result back to timestamps, and caches per video so we only pay once.
+// runs sponsor detection (the bundled on-device model by default, or a local
+// Ollama LLM in dev), maps the result back to timestamps, and caches per video.
 
+// Detector-side config + LLM-path tuning constants. The user-facing setting
+// defaults that overlap here (detector/endpoint/model/maxSegmentSeconds) mirror
+// src/defaults.js — keep those shared keys in sync if you change them.
 const DEFAULTS = {
   // "local" = bundled fine-tuned classifier via Transformers.js (no server,
   // private, multilingual). "ollama" = the original local-LLM dev backend.
@@ -13,12 +16,13 @@ const DEFAULTS = {
   numCtx: 8192, // chunks are small, so a modest context fits with output room
   window: 350, // chunk size in transcript lines
   overlap: 70, // overlap so a sponsor straddling a boundary stays recoverable
-  // Sanity guard: a single LLM-detected segment longer than this is almost
-  // always a hallucination — drop it rather than risk skipping real content.
+  // Sanity guard: a single detected segment longer than this is almost always an
+  // error (a model artifact or LLM hallucination) — drop it rather than risk
+  // skipping real content. Applied to both detectors.
   maxSegmentSeconds: 300,
 };
 
-async function getLLMConfig() {
+async function getDetectorConfig() {
   const stored = await chrome.storage.local.get("settings");
   const s = stored.settings || {};
   return {
@@ -179,7 +183,9 @@ function toSegments(parsed, cues) {
 }
 
 // --------------------------------------------------------------------------- //
-// LLM call (Ollama /api/generate; format:"json" forces a JSON object)
+// LLM call (Ollama /api/generate). We deliberately do NOT set format:"json" — its
+// grammar mode collapses small models to an empty array, so we parse JSON out of
+// the free-text response instead (see extractJSON).
 // --------------------------------------------------------------------------- //
 async function callLLM(cfg, prompt, signal) {
   console.log(`[ad_skip:bg] POST ${cfg.endpoint} model=${cfg.model} promptChars=${prompt.length}`);
@@ -277,9 +283,9 @@ async function fetchSponsorBlock(videoId, signal) {
 // Detection entry point (with cache)
 // --------------------------------------------------------------------------- //
 async function saveResult(videoId, title, segments, source) {
-  await chrome.storage.local.set({ [`seg:${videoId}`]: segments });
-  await chrome.storage.local.set({ [`src:${videoId}`]: source });
   await chrome.storage.local.set({
+    [`seg:${videoId}`]: segments,
+    [`src:${videoId}`]: source,
     lastResult: { videoId, title, count: segments.length, segments, source, at: Date.now() },
   });
 }
@@ -361,7 +367,7 @@ async function detect({ videoId, title, lang, cues }, signal) {
     return { segments: cached[cacheKey], cached: true, source: cached[srcKey] };
   }
 
-  const cfg = await getLLMConfig();
+  const cfg = await getDetectorConfig();
 
   // Discovery phase (no transcript sent yet): try the SponsorBlock fast-path. If
   // it misses, tell the content script to fetch the transcript and come back.
@@ -427,7 +433,7 @@ function setBadge(tabId, text, color) {
 }
 
 // At most one detection runs at a time; a new request or an abort cancels it,
-// so a user flipping through videos can't pile up a queue for the LLM.
+// so a user flipping through videos can't pile up a queue of detections.
 let active = null; // { videoId, controller }
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -456,7 +462,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.type === "localDetectTest") {
     (async () => {
       try {
-        const cfg = await getLLMConfig();
+        const cfg = await getDetectorConfig();
         const t0 = Date.now();
         const segments = await localDetect(msg.cues, cfg, null);
         sendResponse({ ok: true, segments, ms: Date.now() - t0 });
@@ -478,7 +484,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   detect(msg, controller.signal)
     .then((r) => {
       if (r.needTranscript) {
-        // discovery missed; keep the "…" badge — the LLM phase request follows
+        // discovery missed; keep the "…" badge — the detection-phase request follows
         console.log(`[ad_skip:bg] no fast-path for ${msg.videoId}; awaiting transcript`);
       } else {
         const n = r.segments?.length || 0;

@@ -1,19 +1,5 @@
-const DEFAULTS = {
-  mode: "button",
-  minConfidence: 0.6,
-  autoSkipDelay: 3,
-  countdownMode: "grace",
-  statusIndicator: "both",
-  theme: "auto",
-  useSponsorBlock: true,
-  detector: "local",
-  customModel: "",
-  categories: { sponsor: true, selfpromo: true, interaction: false },
-  endpoint: "http://localhost:11434/api/generate",
-  model: "gemma4:latest",
-  maxSegmentSeconds: 300,
-};
-
+// DEFAULTS and filterSegments come from ../src/defaults.js (loaded just before this
+// script), shared with the content script so both filter segments identically.
 const $ = (id) => document.getElementById(id);
 let settings = { ...DEFAULTS };
 
@@ -46,6 +32,7 @@ function applyControls() {
   $("theme").value = settings.theme;
   syncMode();
   syncDetectorRows();
+  syncCategoryRows();
 }
 
 function syncMode() {
@@ -59,8 +46,42 @@ function syncDetectorRows() {
   $("ollamaRow").style.display = ollama ? "" : "none";
   $("localRow").style.display = ollama ? "none" : "";
 }
+// The on-device model emits sponsor segments only — self-promo & interaction come
+// solely from SponsorBlock. Grey those two out when SponsorBlock is turned off.
+function syncCategoryRows() {
+  const sbOff = !settings.useSponsorBlock;
+  for (const c of ["selfpromo", "interaction"]) {
+    const box = $("cat_" + c);
+    box.disabled = sbOff;
+    box.closest(".check").classList.toggle("disabled", sbOff);
+  }
+}
 
 const persist = () => chrome.storage.local.set({ settings });
+
+// Optional host permissions (declared in the manifest) are requested lazily — only
+// when the user opts into a feature that needs them, and from a click/change
+// handler so Chrome accepts the request as a user gesture.
+const HF_HOSTS = ["https://huggingface.co/*", "https://*.hf.co/*"];
+function neededOptionalOrigins() {
+  const out = [];
+  if (settings.detector === "ollama") {
+    try { out.push(new URL(settings.endpoint).origin + "/*"); } catch { /* bad URL */ }
+  }
+  const cm = (settings.customModel || "").trim();
+  if (cm) {
+    out.push(...HF_HOSTS);
+    if (/^https?:\/\//i.test(cm)) { try { out.push(new URL(cm).origin + "/*"); } catch { /* not a URL */ } }
+  }
+  return out;
+}
+function ensureOptionalPermissions() {
+  const origins = neededOptionalOrigins();
+  if (!origins.length) return Promise.resolve(true);
+  return new Promise((resolve) =>
+    chrome.permissions.request({ origins }, (granted) => resolve(!!granted))
+  );
+}
 
 function setMode(m) {
   settings.mode = m;
@@ -82,10 +103,24 @@ function bind() {
   ["sponsor", "selfpromo", "interaction"].forEach((c) =>
     on("cat_" + c, () => { settings.categories[c] = $("cat_" + c).checked; persist(); renderStatus(); })
   );
-  on("useSponsorBlock", () => { settings.useSponsorBlock = $("useSponsorBlock").checked; persist(); });
-  on("detector", () => { settings.detector = $("detector").value; syncDetectorRows(); persist(); });
-  on("customModel", () => { settings.customModel = $("customModel").value.trim(); persist(); });
-  on("endpoint", () => { settings.endpoint = $("endpoint").value.trim() || DEFAULTS.endpoint; persist(); });
+  on("useSponsorBlock", () => { settings.useSponsorBlock = $("useSponsorBlock").checked; persist(); syncCategoryRows(); });
+  on("detector", async () => {
+    settings.detector = $("detector").value; syncDetectorRows(); persist();
+    if (settings.detector === "ollama" && !(await ensureOptionalPermissions())) {
+      settings.detector = "local"; $("detector").value = "local"; syncDetectorRows(); persist();
+      toast("Ollama needs local-network access — not granted");
+    }
+  });
+  on("customModel", async () => {
+    settings.customModel = $("customModel").value.trim(); persist();
+    if (settings.customModel && !(await ensureOptionalPermissions())) {
+      toast("Custom models need Hugging Face access — not granted");
+    }
+  });
+  on("endpoint", async () => {
+    settings.endpoint = $("endpoint").value.trim() || DEFAULTS.endpoint; persist();
+    if (settings.detector === "ollama") await ensureOptionalPermissions();
+  });
   on("model", () => { settings.model = $("model").value.trim() || DEFAULTS.model; persist(); });
   on("maxSegmentSeconds", () => { settings.maxSegmentSeconds = parseInt($("maxSegmentSeconds").value, 10) || DEFAULTS.maxSegmentSeconds; persist(); });
   on("theme", () => { settings.theme = $("theme").value; persist(); });
@@ -122,13 +157,9 @@ async function renderStatus() {
 
   const r = $("result");
   if (!data) { r.className = "muted"; r.textContent = "Open a YouTube video to detect sponsors."; return; }
-  // Filter the raw (all-category) segments with the user's current settings so
-  // toggling a category updates this list instantly.
-  const segs = (data.segments || [])
-    .filter((s) => settings.categories[s.category] !== false)
-    .filter((s) => (s.confidence ?? 1) >= settings.minConfidence)
-    .filter((s) => s.end > s.start)
-    .sort((a, b) => a.start - b.start);
+  // Filter the raw (all-category) segments with the user's current settings (shared
+  // with the content script) so toggling a category updates this list instantly.
+  const segs = filterSegments(data.segments || [], settings);
   if (!segs.length) {
     r.className = "muted";
     r.textContent = err.hidden

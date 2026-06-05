@@ -1,6 +1,6 @@
-// Applies the saved theme (auto/light/dark) to the document. Shared by the
-// popup and options pages. "auto" resolves against the OS preference; we set a
-// concrete data-theme so the CSS only needs [data-theme="dark"] rules.
+// Applies the saved theme (auto/light/dark) to the document. Used by the popup.
+// "auto" resolves against the OS preference; we set a concrete data-theme so the
+// CSS only needs [data-theme="dark"] rules.
 function resolveDark(theme) {
   if (theme === "dark") return true;
   if (theme === "light") return false;
