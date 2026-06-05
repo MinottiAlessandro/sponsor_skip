@@ -115,11 +115,27 @@ const INNERTUBE_CLIENTS = [
   { clientName: "IOS", clientVersion: "20.10.4" },
   { clientName: "WEB", clientVersion: "2.20240620.05.00" },
 ];
-// Stable public web InnerTube key; only a fallback if ytcfg didn't expose one.
-const FALLBACK_KEY = "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8";
+// The InnerTube API key is YouTube's own public, per-page value (the identical one
+// baked into every youtube.com page's ytcfg, shared by all visitors — not a private
+// credential). inject.js hands it to us from ytcfg; if that didn't arrive we scrape
+// it straight from the page's inline scripts rather than hardcoding it, so we always
+// use whatever key the page is currently using.
+let scrapedKey = null;
+function pageInnertubeKey() {
+  if (scrapedKey) return scrapedKey;
+  for (const sc of document.scripts) {
+    const m = sc.textContent.match(/"INNERTUBE_API_KEY":\s*"([\w-]+)"/);
+    if (m) { scrapedKey = m[1]; break; }
+  }
+  return scrapedKey;
+}
 
 async function fetchCaptionTracks(videoId, apiKey, signal) {
-  const key = apiKey || FALLBACK_KEY;
+  const key = apiKey || pageInnertubeKey();
+  if (!key) {
+    console.debug("[sponsor_skip] no InnerTube key available from the page");
+    return { tracks: [], audioLang: null };
+  }
   for (const client of INNERTUBE_CLIENTS) {
     let data;
     try {
