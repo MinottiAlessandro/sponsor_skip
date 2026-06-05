@@ -48,13 +48,44 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 
 // --------------------------------------------------------------------------- //
+// Orphan / context-invalidation handling
+// --------------------------------------------------------------------------- //
+// Reloading/updating the (unpacked) extension orphans any content script already
+// running in an open tab: chrome.runtime.* then throws "Extension context
+// invalidated". The orphan can't be revived — only a page refresh injects a fresh
+// instance — so once we notice the context is gone we tear our listeners down and
+// go quiet instead of throwing uncaught errors on every SPA navigation.
+function extensionAlive() {
+  try {
+    return !!chrome.runtime?.id; // becomes undefined once the context is invalidated
+  } catch {
+    return false;
+  }
+}
+
+function teardownOrphan() {
+  document.removeEventListener("yt-navigate-finish", onNavigate);
+  try {
+    controller?.destroy();
+  } catch {}
+  controller = null;
+}
+
+// --------------------------------------------------------------------------- //
 // MAIN-world injection + caption messages
 // --------------------------------------------------------------------------- //
 function injectPlayerReader() {
-  const s = document.createElement("script");
-  s.src = chrome.runtime.getURL("src/inject.js");
-  s.onload = () => s.remove();
-  (document.head || document.documentElement).appendChild(s);
+  if (!extensionAlive()) return teardownOrphan(); // orphaned after an extension reload
+  try {
+    const s = document.createElement("script");
+    s.src = chrome.runtime.getURL("src/inject.js");
+    s.onload = () => s.remove();
+    (document.head || document.documentElement).appendChild(s);
+  } catch (err) {
+    // Context died between the guard and the call — stay quiet and clean up.
+    console.debug("[sponsor_skip] inject skipped (context gone)", err);
+    teardownOrphan();
+  }
 }
 
 window.addEventListener("message", (e) => {
@@ -244,8 +275,10 @@ function hideStatus() {
 }
 
 // Surface a failure on the page pill AND the toolbar icon (popup expands it).
+// console.debug (not warn) so these handled, already-surfaced conditions don't
+// pile up as "errors" on the chrome://extensions page.
 function reportError(videoId, reason) {
-  console.warn("[sponsor_skip]", reason);
+  console.debug("[sponsor_skip]", reason);
   setStatus(false, reason, 8000, true);
   chrome.runtime.sendMessage({ type: "detectError", videoId, reason }).catch(() => {});
 }
@@ -321,7 +354,7 @@ async function runDetection(msg) {
 
     const track = pickTrack(tracks, audioLang);
     if (!track) {
-      console.warn("[sponsor_skip] no usable caption track", tracks);
+      console.debug("[sponsor_skip] no usable caption track", tracks);
       reportError(msg.videoId, "No captions available for this video.");
       return;
     }
@@ -697,7 +730,8 @@ async function boot() {
 }
 
 // YouTube is a SPA: re-run on in-app navigations.
-document.addEventListener("yt-navigate-finish", () => {
+function onNavigate() {
+  if (!extensionAlive()) return teardownOrphan(); // dead context after an extension reload
   if (location.pathname === "/watch") {
     // currentVideoId guard in onVideo prevents duplicate work
     setTimeout(injectPlayerReader, 200);
@@ -710,6 +744,7 @@ document.addEventListener("yt-navigate-finish", () => {
     abortInFlight(previous);
     hideStatus();
   }
-});
+}
+document.addEventListener("yt-navigate-finish", onNavigate);
 
 boot();
