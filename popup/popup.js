@@ -185,14 +185,9 @@ async function renderStatus() {
   // Filter the raw (all-category) segments with the user's current settings (shared
   // with the content script) so toggling a category updates this list instantly.
   const segs = filterSegments(result.segments || [], settings);
-  if (!segs.length) {
-    r.className = "muted";
-    r.textContent = err.hidden
-      ? (result.segments?.length ? "No segments match your enabled categories." : "No sponsor segments detected for this video.")
-      : "";
-    return;
-  }
-  r.className = "";
+
+  // Analysis meta (source + backend + time) — built once and shown whether or not any
+  // sponsors were found, so the user can always see that (and how) the video was analyzed.
   const srcLabel = SOURCE_LABEL[result.source] || result.source;
   // Only the on-device model has a backend + timing; show whichever actually ran
   // (after any fallback) and how long inference took.
@@ -202,6 +197,22 @@ async function renderStatus() {
     if (result.ms != null) bits.push(fmtMs(result.ms));
   }
   const devChip = bits.length ? ` <span class="dev">${bits.join(" · ")}</span>` : "";
+
+  if (!segs.length) {
+    if (!err.hidden) { r.className = "muted"; r.textContent = ""; return; } // error banner says it
+    const msg = result.segments?.length ? "No segments match your enabled categories" : "No sponsors found";
+    // Still surface that the video WAS analyzed (and how), when we have that info.
+    if (result.source) {
+      r.className = "";
+      r.innerHTML = `<div class="via">${msg} · via <b>${srcLabel}</b>${devChip}</div>`;
+    } else {
+      r.className = "muted";
+      r.textContent = msg;
+    }
+    return;
+  }
+
+  r.className = "";
   const via = result.source ? `<div class="via">${segs.length} segment(s) · via <b>${srcLabel}</b>${devChip}</div>` : "";
   r.innerHTML = via + segs.map((s, i) => `<div class="seg" data-i="${i}">${voteCell(s)}` +
     `<span class="cat">${s.category}</span>` +
