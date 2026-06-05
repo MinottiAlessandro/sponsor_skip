@@ -27,6 +27,7 @@ async function getDetectorConfig() {
   const s = stored.settings || {};
   return {
     detector: s.detector || DEFAULTS.detector,
+    device: s.device === "webgpu" ? "webgpu" : "wasm", // on-device model runtime (CPU/GPU)
     customModel: (s.customModel || "").trim(), // advanced: on-device model id/URL ("" = bundled)
     endpoint: s.endpoint || DEFAULTS.endpoint,
     model: s.model || DEFAULTS.model,
@@ -282,12 +283,16 @@ async function fetchSponsorBlock(videoId, signal) {
 // --------------------------------------------------------------------------- //
 // Detection entry point (with cache)
 // --------------------------------------------------------------------------- //
-async function saveResult(videoId, title, segments, source) {
-  await chrome.storage.local.set({
+async function saveResult(videoId, title, segments, source, device, ms) {
+  const data = {
     [`seg:${videoId}`]: segments,
     [`src:${videoId}`]: source,
-    lastResult: { videoId, title, count: segments.length, segments, source, at: Date.now() },
-  });
+    lastResult: { videoId, title, count: segments.length, segments, source, device, ms, at: Date.now() },
+  };
+  // Only the on-device model has a backend + timing; cache them together so a cache
+  // hit can show them too.
+  if (device) data[`dev:${videoId}`] = { device, ms };
+  await chrome.storage.local.set(data);
 }
 
 // --------------------------------------------------------------------------- //
@@ -333,6 +338,7 @@ async function localDetect(cues, cfg, signal) {
   const payload = {
     target: "offscreen-adskip", type: "localDetect", cues, opts,
     model: cfg.customModel || undefined, // undefined -> bundled model
+    device: cfg.device, // "wasm" (CPU) | "webgpu" (GPU); offscreen falls back if needed
   };
 
   // The offscreen module loads (and registers its listener) asynchronously after
@@ -356,15 +362,18 @@ async function localDetect(cues, cfg, signal) {
   }
   if (!resp) throw lastErr || new Error("offscreen unreachable");
   if (!resp.ok) throw new Error(resp.error || "local detect failed");
-  return resp.segments;
+  // device = backend actually used; ms = inference time on it
+  return { segments: resp.segments, device: resp.device, ms: resp.ms };
 }
 
 async function detect({ videoId, title, lang, cues }, signal) {
   const cacheKey = `seg:${videoId}`;
   const srcKey = `src:${videoId}`;
-  const cached = await chrome.storage.local.get([cacheKey, srcKey]);
+  const devKey = `dev:${videoId}`;
+  const cached = await chrome.storage.local.get([cacheKey, srcKey, devKey]);
   if (cached[cacheKey]) {
-    return { segments: cached[cacheKey], cached: true, source: cached[srcKey] };
+    const meta = cached[devKey] || {}; // { device, ms } for local results
+    return { segments: cached[cacheKey], cached: true, source: cached[srcKey], device: meta.device, ms: meta.ms };
   }
 
   const cfg = await getDetectorConfig();
@@ -392,9 +401,9 @@ async function detect({ videoId, title, lang, cues }, signal) {
   const trimmed = cues.slice(0, cfg.maxLines);
 
   if (cfg.detector === "local") {
-    const segments = await localDetect(trimmed, cfg, signal);
-    await saveResult(videoId, title, segments, "local");
-    return { segments, source: "local" };
+    const { segments, device, ms } = await localDetect(trimmed, cfg, signal);
+    await saveResult(videoId, title, segments, "local", device, ms);
+    return { segments, source: "local", device, ms };
   }
 
   // Ollama LLM backend (dev/fallback).
@@ -464,8 +473,8 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       try {
         const cfg = await getDetectorConfig();
         const t0 = Date.now();
-        const segments = await localDetect(msg.cues, cfg, null);
-        sendResponse({ ok: true, segments, ms: Date.now() - t0 });
+        const { segments, device } = await localDetect(msg.cues, cfg, null);
+        sendResponse({ ok: true, segments, ms: Date.now() - t0, device });
       } catch (err) {
         sendResponse({ ok: false, error: String(err?.stack || err) });
       }

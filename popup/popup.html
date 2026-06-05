@@ -90,6 +90,14 @@
         </div>
         <div id="localRow">
           <div class="field">
+            <label for="device">Run on</label>
+            <select id="device">
+              <option value="wasm">CPU — WebAssembly (default)</option>
+              <option value="webgpu">GPU — WebGPU (experimental)</option>
+            </select>
+            <span class="hint">GPU can be faster on some machines but isn't supported everywhere; it falls back to CPU automatically. Our model is int8-quantized, so the speedup may be modest. Changing this reloads the model.</span>
+          </div>
+          <div class="field">
             <label for="customModel">Custom model (advanced)</label>
             <input type="text" id="customModel" placeholder="empty = bundled model" />
             <span class="hint">Load a different Transformers.js ONNX model — a Hugging Face repo id (<code>user/model</code>) or URL. Labels must be O, sponsor, selfpromo, interaction.</span>

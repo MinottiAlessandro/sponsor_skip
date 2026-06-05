@@ -13,6 +13,7 @@ const DEFAULTS = {
   theme: "auto",
   useSponsorBlock: true,
   detector: "local", // "local" = bundled on-device model; "ollama" = local LLM (dev)
+  device: "wasm", // on-device model runtime: "wasm" (CPU) | "webgpu" (GPU, experimental)
   customModel: "",
   categories: { sponsor: true, selfpromo: true, interaction: false },
   endpoint: "http://localhost:11434/api/generate",

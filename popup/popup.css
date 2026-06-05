@@ -116,6 +116,8 @@ a:hover { text-decoration: underline; }
 .seg .time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .via { color: var(--muted); font-size: 11px; margin: 2px 0 8px; }
 .via b { color: var(--text); font-weight: 600; }
+.via .dev { display: inline-block; padding: 0 5px; border: 1px solid var(--border); border-radius: 6px;
+  font-size: 9px; font-weight: 700; letter-spacing: .3px; color: var(--muted); vertical-align: 1px; }
 
 /* Error banner (click to expand) */
 .error {

@@ -25,6 +25,7 @@ function applyControls() {
   $("cat_interaction").checked = settings.categories.interaction;
   $("useSponsorBlock").checked = settings.useSponsorBlock;
   $("detector").value = settings.detector;
+  $("device").value = settings.device;
   $("customModel").value = settings.customModel || "";
   $("endpoint").value = settings.endpoint;
   $("model").value = settings.model;
@@ -117,6 +118,7 @@ function bind() {
       toast("Custom models need Hugging Face access — not granted");
     }
   });
+  on("device", () => { settings.device = $("device").value; persist(); });
   on("endpoint", async () => {
     settings.endpoint = $("endpoint").value.trim() || DEFAULTS.endpoint; persist();
     if (settings.detector === "ollama") await ensureOptionalPermissions();
@@ -138,7 +140,9 @@ function bind() {
 
 // ---- status panel (segments + error) ------------------------------------ //
 const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+const fmtMs = (ms) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
 const SOURCE_LABEL = { sponsorblock: "SponsorBlock DB", local: "on-device model", llm: "local LLM" };
+const DEVICE_LABEL = { wasm: "CPU", webgpu: "GPU" }; // backend the on-device model used
 
 async function renderStatus() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -168,7 +172,16 @@ async function renderStatus() {
     return;
   }
   r.className = "";
-  const via = data.source ? `<div class="via">${segs.length} segment(s) · via <b>${SOURCE_LABEL[data.source] || data.source}</b></div>` : "";
+  const srcLabel = SOURCE_LABEL[data.source] || data.source;
+  // Only the on-device model has a backend + timing; show whichever actually ran
+  // (after any fallback) and how long inference took.
+  const bits = [];
+  if (data.source === "local") {
+    if (data.device) bits.push(DEVICE_LABEL[data.device] || data.device);
+    if (data.ms != null) bits.push(fmtMs(data.ms));
+  }
+  const devChip = bits.length ? ` <span class="dev">${bits.join(" · ")}</span>` : "";
+  const via = data.source ? `<div class="via">${segs.length} segment(s) · via <b>${srcLabel}</b>${devChip}</div>` : "";
   r.innerHTML = via + segs.map((s, i) =>
     `<div class="seg" data-i="${i}"><span class="dot"></span><span class="cat">${s.category}</span>` +
     `<span class="time">${fmt(s.start)}–${fmt(s.end)}</span></div>`).join("");
@@ -179,7 +192,7 @@ async function renderStatus() {
 
 async function resetCache() {
   const all = await chrome.storage.local.get(null);
-  const keys = Object.keys(all).filter((k) => k.startsWith("seg:") || k.startsWith("src:") || k === "lastResult" || k === "lastError");
+  const keys = Object.keys(all).filter((k) => k.startsWith("seg:") || k.startsWith("src:") || k.startsWith("dev:") || k === "lastResult" || k === "lastError");
   await chrome.storage.local.remove(keys);
   toast(`Cleared ${keys.filter((k) => k.startsWith("seg:")).length} cached video(s)`);
   renderStatus();

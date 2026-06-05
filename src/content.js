@@ -12,6 +12,8 @@ let settings = { ...DEFAULTS };
 let controller = null; // current SkipController
 let currentVideoId = null;
 let lastSource = null; // how the current video's segments were found
+let lastDevice = null; // backend the on-device model ran on ("wasm"/"webgpu"), if local
+let lastMs = null; // on-device model inference time in ms, if local
 let lastRawSegments = []; // all detected segments (every category), pre-filter
 
 // Friendly label for where a result came from (shown in the pill + popup).
@@ -272,6 +274,8 @@ function onVideo(msg) {
   controller?.destroy();
   controller = null;
   lastSource = null;
+  lastDevice = null;
+  lastMs = null;
   lastRawSegments = [];
   abortInFlight(previous); // stop work on the video we just left
 
@@ -364,7 +368,9 @@ async function runDetection(msg) {
   lastRawSegments = resp.segments || [];
   const segments = filterSegments(lastRawSegments, settings);
   lastSource = resp.source || null;
-  console.log(`[ad_skip] ${segments.length} segment(s) for ${msg.videoId} (${lastSource || "?"})`, segments);
+  lastDevice = resp.device || null;
+  lastMs = resp.ms ?? null;
+  console.log(`[ad_skip] ${segments.length} segment(s) for ${msg.videoId} (${lastSource || "?"}${lastDevice ? "/" + lastDevice : ""}${lastMs != null ? ", " + lastMs + "ms" : ""})`, segments);
   const n = segments.length;
   const via = n && lastSource ? ` · ${sourceLabel(lastSource)}` : "";
   setStatus(false, n ? `${n} sponsor${n > 1 ? "s" : ""} found${via}` : "No sponsors found", 5000);
@@ -674,6 +680,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       videoId: currentVideoId,
       segments: lastRawSegments,
       source: lastSource,
+      device: lastDevice,
+      ms: lastMs,
     });
   } else if (msg?.type === "seek" && typeof msg.time === "number") {
     const v = document.querySelector("video.html5-main-video, video");
