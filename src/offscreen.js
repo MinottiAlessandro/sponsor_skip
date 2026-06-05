@@ -26,7 +26,13 @@ function ensureWorker() {
   if (worker) return worker;
   worker = new Worker(chrome.runtime.getURL("src/detector.worker.js"), { type: "module" });
   worker.onmessage = (e) => {
-    const { id, ...rest } = e.data || {};
+    const data = e.data || {};
+    // Streaming download progress — relay to the popup/background, don't resolve.
+    if (data.type === "progress") {
+      chrome.runtime.sendMessage({ type: "downloadProgress", id: data.id, pct: data.pct, file: data.file }).catch(() => {});
+      return;
+    }
+    const { id, ...rest } = data;
     const resolve = pending.get(id);
     if (resolve) {
       pending.delete(id);
@@ -66,6 +72,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     callWorker({
       type: "detect",
       model: msg.model,
+      models: msg.models, // ordered fallback candidates for resilience
       device: msg.device,
       cues: msg.cues,
       opts: msg.opts || {},
@@ -82,5 +89,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       })
       .catch((err) => sendResponse({ ok: false, error: String(err?.stack || err) }));
     return true; // async response
+  }
+  if (msg.type === "prepareModel") {
+    callWorker({ type: "prepareModel", model: msg.model, sha256: msg.sha256 })
+      .then((r) => sendResponse(r))
+      .catch((err) => sendResponse({ ok: false, error: String(err?.stack || err) }));
+    return true;
+  }
+  if (msg.type === "deleteModelCache") {
+    callWorker({ type: "deleteModelCache", repo: msg.repo })
+      .then((r) => sendResponse(r))
+      .catch((err) => sendResponse({ ok: false, error: String(err?.stack || err) }));
+    return true;
   }
 });

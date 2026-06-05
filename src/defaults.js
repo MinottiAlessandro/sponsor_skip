@@ -12,9 +12,10 @@ const DEFAULTS = {
   statusIndicator: "both", // "both" | "page" | "badge" | "off"
   theme: "auto",
   useSponsorBlock: true,
-  detector: "local", // "local" = bundled on-device model; "ollama" = local LLM (dev)
+  detector: "local", // "local" = on-device model; "ollama" = local LLM (dev)
   device: "wasm", // on-device model runtime: "wasm" (CPU) | "webgpu" (GPU, experimental)
-  customModel: "",
+  modelId: "default", // which catalog model is active (see src/models/catalog.json)
+  customModel: "", // advanced override: an arbitrary HF repo id/URL (wins over modelId)
   categories: { sponsor: true, selfpromo: true, interaction: false },
   endpoint: "http://localhost:11434/api/generate",
   model: "gemma4:latest",

@@ -25,10 +25,23 @@ const DEFAULTS = {
 async function getDetectorConfig() {
   const stored = await chrome.storage.local.get("settings");
   const s = stored.settings || {};
+  // Resolve which model the detector should load: the advanced custom override wins;
+  // otherwise the active catalog model's repo (built-in default => "model").
+  const customModel = (s.customModel || "").trim();
+  let modelRepo = "model";
+  if (customModel) {
+    modelRepo = customModel;
+  } else {
+    // Cached-only catalog read — detection must never block on a network fetch.
+    const { catalog } = await chrome.storage.local.get("catalog");
+    const cat = catalog || (await bundledCatalog());
+    const entry = (cat.models || []).find((m) => m.id === (s.modelId || DEFAULTS.modelId));
+    if (entry && !entry.builtin) modelRepo = entry.repo;
+  }
   return {
     detector: s.detector || DEFAULTS.detector,
     device: s.device === "webgpu" ? "webgpu" : "wasm", // on-device model runtime (CPU/GPU)
-    customModel: (s.customModel || "").trim(), // advanced: on-device model id/URL ("" = bundled)
+    modelRepo, // "model" = built-in bundled weights; otherwise an HF repo id / URL
     endpoint: s.endpoint || DEFAULTS.endpoint,
     model: s.model || DEFAULTS.model,
     maxLines: DEFAULTS.maxLines,
@@ -38,6 +51,157 @@ async function getDetectorConfig() {
     maxSegmentSeconds: s.maxSegmentSeconds ?? DEFAULTS.maxSegmentSeconds,
     useSponsorBlock: s.useSponsorBlock !== false, // default on
   };
+}
+
+// --------------------------------------------------------------------------- //
+// Model catalog + downloads (selectable on-device models)
+// --------------------------------------------------------------------------- //
+// The catalog lives on Hugging Face so new/better models can be offered without a
+// Web Store update; a bundled copy is the offline fallback. Models themselves are
+// downloaded on demand (their weights are data, not code) and cached by the worker.
+const CATALOG_REMOTE_URL =
+  "https://huggingface.co/AlessandroMino/sponsor-skip-models/resolve/main/models.json";
+const CATALOG_BUNDLED = "models/catalog.json";
+const CATALOG_TTL_MS = 6 * 60 * 60 * 1000; // re-fetch the remote catalog after 6h
+
+let _bundledCatalog = null;
+async function bundledCatalog() {
+  if (!_bundledCatalog) {
+    const res = await fetch(chrome.runtime.getURL(CATALOG_BUNDLED));
+    _bundledCatalog = await res.json();
+  }
+  return _bundledCatalog;
+}
+
+// Always keep a usable "default" entry: prefer a remote one (lets us eventually move
+// the default to an HF download), else fall back to the bundled built-in default.
+async function mergeCatalog(remote) {
+  const bundled = await bundledCatalog();
+  const remoteModels = remote?.models || [];
+  const hasDefault = remoteModels.some((m) => m.id === "default");
+  const def = bundled.models.find((m) => m.id === "default");
+  const models = hasDefault || !def ? remoteModels : [def, ...remoteModels.filter((m) => m.id !== "default")];
+  return { schemaVersion: remote?.schemaVersion || 1, models };
+}
+
+async function loadCatalog(force) {
+  const { catalog, catalogAt } = await chrome.storage.local.get(["catalog", "catalogAt"]);
+  if (!force && catalog && catalogAt && Date.now() - catalogAt < CATALOG_TTL_MS) return catalog;
+  try {
+    const res = await fetch(CATALOG_REMOTE_URL, { cache: "no-store" }); // needs HF host perm
+    if (res.ok) {
+      const merged = await mergeCatalog(await res.json());
+      await chrome.storage.local.set({ catalog: merged, catalogAt: Date.now() });
+      return merged;
+    }
+  } catch { /* offline / not created yet / no permission — fall back below */ }
+  if (catalog) return catalog; // last good
+  // Persist the bundled fallback so we don't retry the (blocked) remote fetch on
+  // every call; the user's "Refresh" forces a fresh attempt once HF is reachable.
+  const bundled = await bundledCatalog();
+  await chrome.storage.local.set({ catalog: bundled, catalogAt: Date.now() });
+  return bundled;
+}
+
+// Catalog + per-model state (active / downloaded / update available) for the popup.
+async function getModels() {
+  const catalog = await loadCatalog(false);
+  const { settings, downloaded = {}, downloadState, modelNotice } = await chrome.storage.local.get([
+    "settings", "downloaded", "downloadState", "modelNotice",
+  ]);
+  const activeId = settings?.modelId || DEFAULTS.modelId;
+  const models = (catalog.models || []).map((m) => ({
+    ...m,
+    active: m.id === activeId,
+    downloaded: !!m.builtin || !!downloaded[m.id],
+    updateAvailable: !m.builtin && downloaded[m.id] && downloaded[m.id].version !== m.version,
+  }));
+  return { models, downloadState: downloadState || null, modelNotice: modelNotice || null };
+}
+
+// Persist + broadcast the single in-flight download's state (so a reopened popup can
+// resume the progress view). Throttled on pct so we don't hammer storage.
+let _lastPct = -10;
+async function setDownloadState(state) {
+  if (state) await chrome.storage.local.set({ downloadState: state });
+  else await chrome.storage.local.remove("downloadState");
+  _lastPct = state?.pct ?? -10;
+  chrome.runtime.sendMessage({ type: "downloadStateChanged" }).catch(() => {});
+}
+
+let downloadingId = null; // at most one download at a time
+async function downloadModel(id) {
+  const catalog = await loadCatalog(false);
+  const m = (catalog.models || []).find((x) => x.id === id);
+  if (!m) throw new Error("Unknown model");
+  if (m.builtin) return; // nothing to fetch
+  if (downloadingId && downloadingId !== id) throw new Error("Another download is in progress");
+  downloadingId = id;
+  await setDownloadState({ id, pct: 0, status: "downloading" });
+  try {
+    await ensureOffscreen();
+    const r = await sendToOffscreen(
+      { target: "offscreen-sponsorskip", type: "prepareModel", model: m.repo, sha256: m.sha256 },
+      10 * 60 * 1000 // big weights on a slow link
+    );
+    if (!r?.ok) throw new Error(r?.error || "download failed");
+    const { downloaded = {} } = await chrome.storage.local.get("downloaded");
+    downloaded[id] = { version: m.version, bytes: (m.sizeMB || 0) * 1024 * 1024, at: Date.now() };
+    await chrome.storage.local.set({ downloaded });
+    await setDownloadState(null);
+  } catch (err) {
+    await setDownloadState({ id, status: "error", error: String(err?.message || err) });
+    throw err;
+  } finally {
+    downloadingId = null;
+  }
+}
+
+async function deleteModel(id) {
+  const catalog = await loadCatalog(false);
+  const m = (catalog.models || []).find((x) => x.id === id);
+  if (!m) throw new Error("Unknown model");
+  if (m.builtin) throw new Error("The built-in model can't be deleted");
+  await ensureOffscreen();
+  const r = await sendToOffscreen(
+    { target: "offscreen-sponsorskip", type: "deleteModelCache", repo: m.repo },
+    60 * 1000
+  );
+  if (!r?.ok) throw new Error(r?.error || "delete failed");
+  const { downloaded = {} } = await chrome.storage.local.get("downloaded");
+  delete downloaded[id];
+  await chrome.storage.local.set({ downloaded });
+}
+
+// Ordered models to try for detection: the chosen one, then the built-in default,
+// then any other downloaded model. An evicted/removed active model fails to load, so
+// the worker walks this list and degrades gracefully instead of dead-ending.
+async function resolveModelCandidates(cfg) {
+  const list = [cfg.modelRepo];
+  if (cfg.modelRepo !== "model") list.push("model"); // built-in is the most reliable fallback
+  const { catalog, downloaded = {} } = await chrome.storage.local.get(["catalog", "downloaded"]);
+  const cat = catalog || (await bundledCatalog());
+  for (const m of cat.models || []) {
+    if (!m.builtin && downloaded[m.id] && m.repo && !list.includes(m.repo)) list.push(m.repo);
+  }
+  return list;
+}
+
+// Record (or clear) a notice when detection had to fall back off the chosen model, so
+// the popup can tell the user their model is missing without breaking the result.
+async function noteModelOutcome(cfg, resp) {
+  if (resp.fellBack && resp.model && resp.model !== cfg.modelRepo) {
+    const { catalog } = await chrome.storage.local.get("catalog");
+    const cat = catalog || (await bundledCatalog());
+    const nameOf = (repo) =>
+      (cat.models || []).find((m) => m.repo === repo)?.name || (repo === "model" ? "built-in default" : repo);
+    await chrome.storage.local.set({
+      modelNotice: `Couldn't load “${nameOf(cfg.modelRepo)}” — used ${nameOf(resp.model)} instead. Re-download it below if this keeps happening.`,
+    });
+  } else {
+    const { modelNotice } = await chrome.storage.local.get("modelNotice");
+    if (modelNotice) await chrome.storage.local.remove("modelNotice"); // a clean run clears it
+  }
 }
 
 // --------------------------------------------------------------------------- //
@@ -411,9 +575,11 @@ function sendToOffscreen(payload, timeoutMs) {
 async function localDetect(cues, cfg, signal) {
   await ensureOffscreen();
   const opts = { maxSegmentSeconds: cfg.maxSegmentSeconds };
+  const candidates = await resolveModelCandidates(cfg);
   const payload = {
     target: "offscreen-sponsorskip", type: "localDetect", cues, opts,
-    model: cfg.customModel || undefined, // undefined -> bundled model
+    model: candidates[0], // "model" = built-in; otherwise an HF repo id / URL
+    models: candidates, // ordered fallbacks if the chosen model can't load (evicted/removed)
     device: cfg.device, // "wasm" (CPU) | "webgpu" (GPU); offscreen falls back if needed
   };
 
@@ -438,6 +604,7 @@ async function localDetect(cues, cfg, signal) {
   }
   if (!resp) throw lastErr || new Error("offscreen unreachable");
   if (!resp.ok) throw new Error(resp.error || "local detect failed");
+  await noteModelOutcome(cfg, resp); // surface (or clear) a "had to fall back" notice
   // device = backend actually used; ms = inference time on it
   return { segments: resp.segments, device: resp.device, ms: resp.ms };
 }
@@ -584,6 +751,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
     })();
     return true; // async response
+  }
+
+  // ---- model catalog + downloads (from the Detector tab's model manager) ---- //
+  if (msg?.type === "getModels" || msg?.type === "refreshCatalog") {
+    (async () => {
+      try {
+        if (msg.type === "refreshCatalog") await loadCatalog(true);
+        sendResponse(await getModels());
+      } catch (err) {
+        sendResponse({ models: [], error: String(err?.message || err) });
+      }
+    })();
+    return true;
+  }
+  if (msg?.type === "downloadModel" || msg?.type === "deleteModel") {
+    (async () => {
+      try {
+        await (msg.type === "downloadModel" ? downloadModel(msg.id) : deleteModel(msg.id));
+        sendResponse({ ok: true });
+      } catch (err) {
+        sendResponse({ ok: false, error: String(err?.message || err) });
+      }
+    })();
+    return true;
+  }
+  // Streaming progress from the offscreen worker — persist (throttled, no broadcast)
+  // so a reopened popup resumes the bar. An open popup already updates live from this
+  // same message, so we don't trigger a full re-render here.
+  if (msg?.type === "downloadProgress") {
+    if (downloadingId && Math.abs((msg.pct ?? 0) - _lastPct) >= 3) {
+      _lastPct = msg.pct ?? 0;
+      chrome.storage.local.set({ downloadState: { id: downloadingId, pct: msg.pct, status: "downloading" } });
+    }
+    return; // no response
   }
 
   if (msg?.type !== "detect") return;

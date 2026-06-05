@@ -103,6 +103,43 @@ button.btn {
 }
 button.btn:hover { background: var(--surface-2); }
 button.btn.accent { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.btn.sm { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
+
+/* Model manager (Detector tab) */
+.modelshd { display: flex; align-items: center; margin-bottom: 4px; }
+.modelshd label { font-weight: 600; }
+.linkbtn { appearance: none; border: 0; background: none; cursor: pointer; margin-left: auto;
+  font: inherit; font-size: 11px; font-weight: 600; color: #3ea6ff; padding: 0; }
+.linkbtn:hover { text-decoration: underline; }
+.linkbtn:disabled { color: var(--muted); cursor: default; text-decoration: none; }
+.modellist { display: flex; flex-direction: column; gap: 6px; margin: 2px 0 4px; }
+.mnotice { display: flex; align-items: flex-start; gap: 6px; padding: 7px 9px; border-radius: 8px;
+  font-size: 11px; line-height: 1.35; color: var(--text);
+  border: 1px solid var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); }
+.mnotice button { appearance: none; border: 0; background: none; cursor: pointer; margin-left: auto;
+  color: var(--muted); font-size: 12px; line-height: 1; padding: 0 2px; flex: none; }
+.mnotice button:hover { color: var(--text); }
+.model {
+  display: flex; align-items: center; gap: 8px; padding: 8px 9px;
+  border: 1px solid var(--border); border-radius: 9px; background: var(--surface);
+}
+.model.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.model .minfo { min-width: 0; flex: 1; }
+.model .mname { font-weight: 600; display: flex; align-items: center; gap: 6px; }
+.model .mmeta { font-size: 10.5px; color: var(--muted); margin-top: 1px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.model .mbadge { font-size: 8.5px; font-weight: 700; letter-spacing: .3px; text-transform: uppercase;
+  color: var(--accent-ink); background: var(--accent); border-radius: 5px; padding: 1px 5px; }
+.model .mctl { flex: none; display: flex; align-items: center; gap: 6px; }
+.model .mactive { font-size: 11px; font-weight: 700; color: #2ba640; }
+.model .mprog { width: 70px; height: 6px; border-radius: 3px; overflow: hidden;
+  background: var(--surface-2); }
+.model .mprog .mbar { height: 100%; background: var(--accent); transition: width .15s ease; }
+.model .mpct { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 28px; }
+.advanced { margin-top: 8px; }
+.advanced > summary { cursor: pointer; font-weight: 600; font-size: 12px; color: var(--muted); }
+.advanced > summary:hover { color: var(--text); }
+.advanced input[type="text"] { margin-top: 6px; }
 a { color: #3ea6ff; cursor: pointer; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .muted { color: var(--muted); }

@@ -11,6 +11,7 @@ document.querySelectorAll(".tab").forEach((t) =>
     document.querySelectorAll(".panel").forEach((p) =>
       p.classList.toggle("active", p.dataset.panel === t.dataset.tab)
     );
+    if (t.dataset.tab === "detector") renderModels();
   })
 );
 
@@ -138,6 +139,21 @@ function bind() {
   $("addSeg").addEventListener("click", addSegmentAtPlayhead);
   $("cCancel").addEventListener("click", cancelSubmit);
   $("cSubmit").addEventListener("click", submitPending);
+  $("refreshModels").addEventListener("click", refreshModelsUI);
+  $("modelList").addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-action]");
+    if (!btn) return;
+    const { action, id } = btn.dataset;
+    if (action === "use") useModel(id);
+    else if (action === "download") downloadModelUI(id);
+    else if (action === "delete") deleteModelUI(id);
+    else if (action === "dismissNotice") chrome.storage.local.remove("modelNotice").then(renderModels);
+  });
+  // Live download progress from the background/offscreen worker.
+  chrome.runtime.onMessage.addListener((m) => {
+    if (m?.type === "downloadProgress") updateProgressBar(m.pct);
+    else if (m?.type === "downloadStateChanged") renderModels();
+  });
   $("opentest").addEventListener("click", () => window.open(chrome.runtime.getURL("debug/test.html")));
   $("resetcache").addEventListener("click", resetCache);
 }
@@ -338,6 +354,88 @@ async function addSegmentAtPlayhead() {
   }
 }
 
+// ---- model manager (Detector tab) --------------------------------------- //
+const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+function requestHF() {
+  return new Promise((res) => chrome.permissions.request({ origins: HF_HOSTS }, (g) => res(!!g)));
+}
+
+async function renderModels() {
+  const list = $("modelList");
+  if (!list) return;
+  let data;
+  try { data = await chrome.runtime.sendMessage({ type: "getModels" }); } catch { return; }
+  const models = data?.models || [];
+  const dl = data?.downloadState || null;
+  const langs = (ls) => (ls || []).map((l) => l.toUpperCase()).join(" ");
+  const notice = data?.modelNotice
+    ? `<div class="mnotice">⚠ ${escapeHtml(data.modelNotice)}<button data-action="dismissNotice" title="Dismiss">✕</button></div>`
+    : "";
+  list.innerHTML = notice + models.map((m) => {
+    const downloading = dl && dl.id === m.id && dl.status === "downloading";
+    const meta = [m.sizeMB ? `${m.sizeMB} MB` : "", langs(m.languages)].filter(Boolean).join(" · ");
+    const upd = m.updateAvailable ? `<button class="btn sm" data-action="download" data-id="${m.id}">Update</button>` : "";
+    let ctl;
+    if (downloading) {
+      ctl = `<div class="mprog"><div class="mbar" style="width:${dl.pct || 0}%"></div></div><span class="mpct">${dl.pct || 0}%</span>`;
+    } else if (m.active) {
+      ctl = `<span class="mactive">Active</span>${upd}`;
+    } else if (m.downloaded) {
+      ctl = `<button class="btn sm accent" data-action="use" data-id="${m.id}">Use</button>${upd}` +
+        (m.builtin ? "" : `<button class="btn sm" data-action="delete" data-id="${m.id}">Delete</button>`);
+    } else {
+      ctl = `<button class="btn sm" data-action="download" data-id="${m.id}">Download${m.sizeMB ? ` (${m.sizeMB} MB)` : ""}</button>`;
+    }
+    const rec = m.recommended ? `<span class="mbadge">Recommended</span>` : "";
+    return `<div class="model${m.active ? " on" : ""}" data-id="${m.id}">` +
+      `<div class="minfo"><div class="mname">${escapeHtml(m.name)}${rec}</div><div class="mmeta">${escapeHtml(meta)}</div></div>` +
+      `<div class="mctl">${ctl}</div></div>`;
+  }).join("") || `<div class="hint">No models available.</div>`;
+  const totalMB = models.filter((m) => m.downloaded && !m.builtin).reduce((s, m) => s + (m.sizeMB || 0), 0);
+  $("storageUsed").textContent = totalMB ? `${totalMB} MB of models downloaded` : "";
+}
+
+function updateProgressBar(pct) {
+  const bar = $("modelList")?.querySelector(".mprog .mbar");
+  const lbl = $("modelList")?.querySelector(".mpct");
+  if (bar) bar.style.width = `${pct}%`;
+  if (lbl) lbl.textContent = `${pct}%`;
+}
+
+async function useModel(id) {
+  settings.modelId = id;
+  await persist();
+  toast("Model selected — applies on the next analysis");
+  renderModels();
+}
+
+async function downloadModelUI(id) {
+  if (!(await requestHF())) { toast("Hugging Face access not granted"); return; }
+  chrome.runtime.sendMessage({ type: "downloadModel", id })
+    .then((r) => { toast(r?.ok ? "Model downloaded" : `Download failed: ${r?.error || ""}`); renderModels(); })
+    .catch(() => {});
+  setTimeout(renderModels, 60); // pick up the "downloading" state the background just set
+}
+
+async function deleteModelUI(id) {
+  try {
+    const r = await chrome.runtime.sendMessage({ type: "deleteModel", id });
+    if (!r?.ok) throw new Error(r?.error || "delete failed");
+    // If we somehow deleted the active model, fall back to the default.
+    if (settings.modelId === id) { settings.modelId = "default"; await persist(); }
+    toast("Model deleted");
+  } catch (err) { toast(`Delete failed: ${String(err.message || err)}`); }
+  renderModels();
+}
+
+async function refreshModelsUI() {
+  if (!(await requestHF())) { toast("Hugging Face access not granted"); return; }
+  $("refreshModels").disabled = true;
+  try { await chrome.runtime.sendMessage({ type: "refreshCatalog" }); } catch {}
+  $("refreshModels").disabled = false;
+  renderModels();
+}
+
 async function resetCache() {
   const all = await chrome.storage.local.get(null);
   const keys = Object.keys(all).filter((k) => k.startsWith("seg:") || k.startsWith("src:") || k.startsWith("dev:") || k === "lastResult" || k === "lastError");
@@ -364,6 +462,7 @@ bind();
   settings = { ...DEFAULTS, ...(stored.settings || {}), categories: { ...DEFAULTS.categories, ...(stored.settings?.categories || {}) } };
   applyControls();
   renderStatus();
+  renderModels();
   fetch(chrome.runtime.getURL("model/model_version.json"))
     .then((r) => r.json())
     .then((m) => { $("modelinfo").textContent = `model v${m.version}`; })

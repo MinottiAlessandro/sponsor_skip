@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "models": [
+    {
+      "id": "default",
+      "name": "Default · multilingual",
+      "repo": "model",
+      "builtin": true,
+      "version": "2026.06.04",
+      "sizeMB": 129,
+      "dtype": "q8",
+      "languages": ["en", "it", "es", "fr", "de"],
+      "speed": 4,
+      "accuracy": 3,
+      "recommended": true,
+      "description": "Balanced on-device model — detects creator-read sponsorships in 5 languages."
+    }
+  ]
+}

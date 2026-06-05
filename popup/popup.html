@@ -117,10 +117,18 @@
             <span class="hint">GPU can be faster on some machines but isn't supported everywhere; it falls back to CPU automatically. Our model is int8-quantized, so the speedup may be modest. Changing this reloads the model.</span>
           </div>
           <div class="field">
-            <label for="customModel">Custom model (advanced)</label>
-            <input type="text" id="customModel" placeholder="empty = bundled model" />
-            <span class="hint">Load a different Transformers.js ONNX model — a Hugging Face repo id (<code>user/model</code>) or URL. Labels must be O, sponsor, selfpromo, interaction.</span>
+            <div class="modelshd">
+              <label>Detection model</label>
+              <button class="linkbtn" id="refreshModels" type="button">Refresh</button>
+            </div>
+            <div id="modelList" class="modellist"></div>
+            <span class="hint" id="storageUsed"></span>
           </div>
+          <details class="advanced">
+            <summary>Advanced: custom model</summary>
+            <input type="text" id="customModel" placeholder="empty = use the model selected above" />
+            <span class="hint">Override with any Transformers.js ONNX token-classifier — a Hugging Face repo id (<code>user/model</code>) or URL. Labels must be O, sponsor, selfpromo, interaction.</span>
+          </details>
         </div>
         <div id="ollamaRow">
           <div class="row">
