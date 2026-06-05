@@ -160,8 +160,10 @@ a:hover { text-decoration: underline; }
 
 /* Ko-fi support note — Ko-fi coral so it stands out from the yellow theme, but kept
    small, static, and pinned to the bottom of the Status tab so it's easy to ignore. */
+/* Support row pinned to the bottom of the Status tab: Ko-fi note + GitHub square. */
+.support { margin-top: auto; display: flex; align-items: stretch; gap: 8px; }
 .kofi {
-  margin-top: auto; /* push to the bottom of the Status panel */
+  flex: 1;
   display: flex; align-items: center; justify-content: center; gap: 8px;
   padding: 9px 12px; border-radius: 9px; text-decoration: none;
   font-size: 11px; color: var(--text);
@@ -172,6 +174,19 @@ a:hover { text-decoration: underline; }
 .kofi:hover { background: color-mix(in srgb, #ff5e5b 18%, transparent); border-color: #ff5e5b; }
 .kofi b { color: #ff5e5b; font-weight: 700; }
 .kofi .cup { font-size: 14px; line-height: 1; }
+/* Square GitHub link so contributors can find the repo. It sets the row's height
+   (the tallest item), and the stretch-aligned Ko-fi note matches it — so the two
+   line up cleanly. Fixed width+height guarantees a real square (aspect-ratio on a
+   stretched flex item isn't reliable). */
+.gh {
+  flex: none; align-self: center; width: 40px; height: 40px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 9px; text-decoration: none; color: var(--text);
+  border: 1px solid var(--border); background: var(--surface);
+  transition: background .12s ease, border-color .12s ease, color .12s ease;
+}
+.gh:hover { background: var(--surface-2); border-color: var(--text); }
+.gh svg { width: 19px; height: 19px; fill: currentColor; }
 
 /* Error banner (click to expand) */
 .error {
