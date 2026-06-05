@@ -398,7 +398,10 @@ async function runDetection(msg) {
     return;
   }
 
-  lastRawSegments = resp.segments || [];
+  // Keep any segments the user added by hand if they did so while detection was
+  // still running (otherwise this result would clobber them).
+  const manual = lastRawSegments.filter((s) => s.manual);
+  lastRawSegments = manual.length ? [...(resp.segments || []), ...manual] : resp.segments || [];
   const segments = filterSegments(lastRawSegments, settings);
   lastSource = resp.source || null;
   lastDevice = resp.device || null;
@@ -410,7 +413,9 @@ async function runDetection(msg) {
 
   const video = document.querySelector("video.html5-main-video, video");
   if (!video) return;
+  controller?.destroy(); // tear down a controller a mid-detection manual add may have created
   controller = new SkipController(video, segments, settings);
+  if (manual.length) saveEditedSegments(); // re-persist so the cache keeps the manual segs too
 }
 
 // --------------------------------------------------------------------------- //
@@ -588,6 +593,8 @@ class SkipController {
     if (seg !== this.activeSeg) {
       this.activeSeg = seg;
       this.showButton(seg);
+    } else {
+      this.updateButtonLabel(seg); // keep the "(Xs)" counting down as playback advances
     }
   }
 
@@ -803,6 +810,13 @@ class SkipController {
     if (cd) cd.style.bottom = `${bottom}px`;
   }
 
+  // The "(Xs)" reflects seconds left until the sponsor's end, so it ticks down live.
+  updateButtonLabel(seg) {
+    if (!this.btn) return;
+    const secs = Math.max(1, Math.round(seg.end - this.video.currentTime));
+    this.btn.textContent = `Skip ${seg.category} (${secs}s) ▶`;
+  }
+
   showButton(seg) {
     if (!this.btn) {
       this.btn = document.createElement("button");
@@ -813,8 +827,7 @@ class SkipController {
         this.hideButton();
       });
     }
-    const secs = Math.max(1, Math.round(seg.end - this.video.currentTime));
-    this.btn.textContent = `Skip ${seg.category} (${secs}s) ▶`;
+    this.updateButtonLabel(seg);
     this.btn.style.display = "block";
     this.positionBottomControls();
   }
@@ -890,6 +903,21 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     controller?.setSegments(filterSegments(lastRawSegments, settings));
     logFalsePositive(currentVideoId, removed);
     saveEditedSegments().then(() => sendResponse({ ok: true }));
+    return true; // async response
+  } else if (msg?.type === "addSegment") {
+    // Manually add a sponsor at the playhead; the user then drags the edges to fit.
+    const v = document.querySelector("video.html5-main-video, video");
+    const dur = v?.duration;
+    if (!v || !dur || !isFinite(dur)) { sendResponse({ ok: false, error: "no video" }); return; }
+    const start = Math.max(0, Math.min(v.currentTime, dur - 2));
+    const end = Math.min(dur, start + 20); // sensible default span; adjust by dragging
+    // manual + edited: user-authored, so treat as verified (and submittable to SponsorBlock).
+    const seg = { start, end, category: "sponsor", confidence: 1, manual: true, edited: true };
+    lastRawSegments.push(seg);
+    const filtered = filterSegments(lastRawSegments, settings);
+    if (controller) controller.setSegments(filtered);
+    else if (currentVideoId) controller = new SkipController(v, filtered, settings);
+    saveEditedSegments().then(() => sendResponse({ ok: true, start: seg.start }));
     return true; // async response
   }
 });

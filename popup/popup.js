@@ -135,6 +135,7 @@ function bind() {
   });
 
   $("error").addEventListener("click", () => $("error").classList.toggle("open"));
+  $("addSeg").addEventListener("click", addSegmentAtPlayhead);
   $("cCancel").addEventListener("click", cancelSubmit);
   $("cSubmit").addEventListener("click", submitPending);
   $("opentest").addEventListener("click", () => window.open(chrome.runtime.getURL("debug/test.html")));
@@ -163,10 +164,15 @@ async function renderStatus() {
   }
 
   const r = $("result");
-  if (!data) { r.className = "muted"; r.textContent = "Open a YouTube video to detect sponsors."; return; }
+  if (!data) {
+    r.className = "muted"; r.textContent = "Open a YouTube video to detect sponsors.";
+    $("addSeg").hidden = true;
+    return;
+  }
 
   if (popupVideoId !== data.videoId) cancelSubmit(); // close a stale confirm on video change
   popupVideoId = data.videoId;
+  $("addSeg").hidden = false; // a video is open → allow manual segment adding
 
   // A just-finished detection writes lastResult to storage (which wakes this popup)
   // a beat BEFORE the content script has received the same result — so mid-handoff
@@ -304,6 +310,20 @@ async function dismissSegment(seg) {
     renderStatus();
   } catch {
     toast("Couldn't remove that segment");
+  }
+}
+
+// Manually add a sponsor segment at the current playhead; the user then drags its
+// edges on the video to set the exact bounds (and can 👍 it to SponsorBlock or 👎 it).
+async function addSegmentAtPlayhead() {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    const r = await chrome.tabs.sendMessage(tab.id, { type: "addSegment" });
+    if (!r?.ok) throw new Error(r?.error || "couldn't add");
+    toast("Segment added — drag its edges on the video to set the exact bounds");
+    renderStatus();
+  } catch {
+    toast("Couldn't add a segment here");
   }
 }
 

@@ -89,28 +89,28 @@
    pointer-events:auto), so scrubbing the rest of the bar is unaffected. */
 .sponsorskip-handle {
   position: absolute;
-  top: -3px;
-  bottom: -3px;
-  width: 9px;
+  top: -13px;
+  bottom: -13px; /* tall hit zone — the bar itself is only a few px high */
+  width: 24px;
   z-index: 31;
   pointer-events: auto;
   cursor: ew-resize;
   touch-action: none; /* let us own the drag gesture on touch/pen */
 }
-.sponsorskip-handle.start { left: -5px; }
-.sponsorskip-handle.end { right: -5px; }
+.sponsorskip-handle.start { left: -12px; }
+.sponsorskip-handle.end { right: -12px; }
 .sponsorskip-handle::after { /* the visible grip */
   content: "";
   position: absolute;
-  top: 1px;
-  bottom: 1px;
+  top: 8px;
+  bottom: 8px;
   left: 50%;
-  width: 3px;
+  width: 6px;
   transform: translateX(-50%);
-  background: rgba(255, 255, 255, 0.85);
-  border: 1px solid rgba(0, 0, 0, 0.55);
-  border-radius: 2px;
-  opacity: 0.4;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 3px;
+  opacity: 0.55;
   transition: opacity 0.12s ease, transform 0.12s ease;
 }
 .sponsorskip-handle:hover::after,

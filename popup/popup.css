@@ -135,6 +135,16 @@ a:hover { text-decoration: underline; }
 .via .dev { display: inline-block; padding: 0 5px; border: 1px solid var(--border); border-radius: 6px;
   font-size: 9px; font-weight: 700; letter-spacing: .3px; color: var(--muted); vertical-align: 1px; }
 
+/* Manually add a segment at the playhead (then drag its edges on the video) */
+.addseg {
+  appearance: none; cursor: pointer; width: 100%; margin-top: 8px;
+  padding: 7px 10px; font: inherit; font-weight: 600; font-size: 12px;
+  color: var(--muted); background: none;
+  border: 1px dashed var(--border); border-radius: 8px;
+  transition: color .12s, border-color .12s, background .12s;
+}
+.addseg:hover { color: var(--accent-ink); background: var(--accent); border-color: var(--accent); }
+
 /* "Add to SponsorBlock?" confirm card — the human-in-the-loop checkpoint before a
    model segment is submitted to the public database. */
 .confirm {
