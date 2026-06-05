@@ -148,7 +148,7 @@ async function renderStatus() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
   let data = null;
   try { data = await chrome.tabs.sendMessage(tab.id, { type: "getSegments" }); } catch { /* no content script */ }
-  const { lastError } = await chrome.storage.local.get("lastError");
+  const { lastResult, lastError } = await chrome.storage.local.get(["lastResult", "lastError"]);
 
   // error banner (only for the video currently open)
   const err = $("error");
@@ -161,27 +161,36 @@ async function renderStatus() {
 
   const r = $("result");
   if (!data) { r.className = "muted"; r.textContent = "Open a YouTube video to detect sponsors."; return; }
+
+  // A just-finished detection writes lastResult to storage (which wakes this popup)
+  // a beat BEFORE the content script has received the same result — so mid-handoff
+  // the content script still reports empty. When lastResult is for the video the
+  // active tab is on, render from it directly: that way a sponsor found while the
+  // popup is open shows up immediately instead of only after a close/reopen. The
+  // videoId match keeps a background tab's detection from leaking into this one.
+  const result = lastResult && lastResult.videoId === data.videoId ? lastResult : data;
+
   // Filter the raw (all-category) segments with the user's current settings (shared
   // with the content script) so toggling a category updates this list instantly.
-  const segs = filterSegments(data.segments || [], settings);
+  const segs = filterSegments(result.segments || [], settings);
   if (!segs.length) {
     r.className = "muted";
     r.textContent = err.hidden
-      ? (data.segments?.length ? "No segments match your enabled categories." : "No sponsor segments detected for this video.")
+      ? (result.segments?.length ? "No segments match your enabled categories." : "No sponsor segments detected for this video.")
       : "";
     return;
   }
   r.className = "";
-  const srcLabel = SOURCE_LABEL[data.source] || data.source;
+  const srcLabel = SOURCE_LABEL[result.source] || result.source;
   // Only the on-device model has a backend + timing; show whichever actually ran
   // (after any fallback) and how long inference took.
   const bits = [];
-  if (data.source === "local") {
-    if (data.device) bits.push(DEVICE_LABEL[data.device] || data.device);
-    if (data.ms != null) bits.push(fmtMs(data.ms));
+  if (result.source === "local") {
+    if (result.device) bits.push(DEVICE_LABEL[result.device] || result.device);
+    if (result.ms != null) bits.push(fmtMs(result.ms));
   }
   const devChip = bits.length ? ` <span class="dev">${bits.join(" · ")}</span>` : "";
-  const via = data.source ? `<div class="via">${segs.length} segment(s) · via <b>${srcLabel}</b>${devChip}</div>` : "";
+  const via = result.source ? `<div class="via">${segs.length} segment(s) · via <b>${srcLabel}</b>${devChip}</div>` : "";
   r.innerHTML = via + segs.map((s, i) =>
     `<div class="seg" data-i="${i}"><span class="dot"></span><span class="cat">${s.category}</span>` +
     `<span class="time">${fmt(s.start)}–${fmt(s.end)}</span></div>`).join("");
