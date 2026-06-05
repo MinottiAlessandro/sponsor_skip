@@ -10,6 +10,7 @@
 </p>
 
 <p align="center">
+  <img src="https://img.shields.io/badge/version-0.6.0-f0a500" alt="Version 0.6.0" />
   <img src="https://img.shields.io/badge/Manifest-V3-3367d6" alt="Manifest V3" />
   <img src="https://img.shields.io/badge/detection-100%25%20on--device-2ea44f" alt="On-device" />
   <img src="https://img.shields.io/badge/privacy-no%20servers-2ea44f" alt="Private" />
@@ -31,26 +32,33 @@ you by…"). **sponsor_skip** finds those segments from the video's captions and
 for you — automatically, or with a one-click button.
 
 It runs a small AI model **entirely in your browser**. No account, no servers, no
-API keys — the transcript and everything else **never leave your device**.
+API keys — the transcript and the detection **never leave your device**.
 
 - 🎯 **Detects creator-read sponsorships** (and optionally self-promo & like/subscribe begs), including the lead-in "but first…" segue.
 - 🟡 **Marks them in yellow** on the progress bar, SponsorBlock-style.
+- ✋ **Fine-tune on the fly** — drag the marker edges to fix a start/end, or add a sponsor segment by hand.
 - ⏭️ **Auto-skips** (with an optional cancelable countdown) or shows a **Skip** button — your choice.
+- 🔀 **Swappable models** — pick the on-device model from a curated list and download better ones over time.
+- 🤝 **Give back (optional)** — vote on SponsorBlock segments, or contribute the ones your model found.
 - 🌍 **Multilingual** — English, Italian, Spanish, French, German.
-- 🔒 **100% private** — on-device detection; nothing is uploaded.
+- 🔒 **Private by default** — detection is on-device; nothing is sent anywhere unless you choose to contribute.
 - ⚡ **Instant on known videos** via the community SponsorBlock database (queried privately).
 
 ## Privacy first
 
-This is the whole point. Detection uses a bundled neural model executed locally
-through WebAssembly. The only network requests sponsor_skip makes are:
+This is the whole point. **Detection runs entirely on your device** — the transcript
+and the neural-network inference never leave your browser. There's no telemetry, no
+analytics, and nothing is sent anywhere automatically beyond the requests below.
 
-| Request | Why | Private? |
-|---|---|---|
-| YouTube captions | to read the transcript it analyzes | same requests the player already makes |
-| SponsorBlock (optional) | instant skips on already-labeled videos | queried by a **hash prefix** of the video ID, so the service never learns which video you're watching |
+| Request | When | Why | Private? |
+|---|---|---|---|
+| **YouTube captions** | every analyzed video | to read the transcript it analyzes | the same requests the player already makes |
+| **SponsorBlock lookup** *(optional, on by default)* | per video | instant skips on already-labeled videos | queried by a **hash prefix** of the video ID, so the service never learns which video you're watching |
+| **SponsorBlock contribution** *(optional, only when you click)* | when you vote or submit a segment | to share a vote / a sponsor segment with the community DB | sends only that segment plus a **random local ID** (not linked to you or your Google account) |
+| **Hugging Face** *(optional)* | only when you refresh the model list or download a model | to fetch the model catalog and the model weights you pick | plain file downloads, no account, no tracking |
 
-No telemetry. No analytics. No sponsor data sent anywhere.
+Nothing is uploaded unless **you** initiate it (a vote, a segment submission, or a
+model download). Detection results are cached locally only.
 
 ## Install
 
@@ -70,9 +78,9 @@ No telemetry. No analytics. No sponsor data sent anywhere.
 
 Click the toolbar icon to open the popup. It has four tabs:
 
-- **Status** — pick how to act on sponsors (**Auto-skip · Button · Off**), see the segments found in the current video (click one to jump to it), and any error.
-- **Skipping** — countdown length & style, which categories to skip (sponsor / self-promo / interaction), confidence, and where the status indicator shows.
-- **Detector** — SponsorBlock toggle, the detection backend, **Reset sponsor cache**, and **Test the model**.
+- **Status** — pick how to act on sponsors (**Auto-skip · Button · Off**), see the segments found in the current video (and *how* — SponsorBlock or the on-device model, with the backend and analysis time), click a segment to jump to it, **vote / contribute** with the 👍 / 👎 buttons, **add a segment by hand**, and read any error.
+- **Skipping** — countdown length & style, which categories to skip (sponsor / self-promo / interaction), minimum confidence, and where the status indicator shows.
+- **Detector** — SponsorBlock toggle, the **model manager** (pick / download / delete on-device models), **CPU or GPU**, max segment length, **Reset sponsor cache**, **Test the model**, and advanced overrides.
 - **Look** — light / dark / auto theme.
 
 While a video is analyzed, a small pill appears top-left of the player; when it's
@@ -81,12 +89,45 @@ auto mode it jumps past them (you can cancel any single skip).
 
 > 💡 If a video fails to analyze, the toolbar icon shows a red **!** — open the popup to read why.
 
-## Languages
+### Fine-tuning & adding segments
 
-Trained on native YouTube transcripts in **English, Italian, Spanish, French, and
-German**. Detection quality is strongest in ES/IT/EN; German is the weakest of the
-five but still works. Other languages may partially work thanks to the multilingual
-base model, but aren't officially supported.
+The model is tuned for precision, so it occasionally clips a boundary or misses a
+softer read. You can fix that right on the player:
+
+- **Drag the yellow marker edges** on the progress bar to adjust a sponsor's start or
+  end — you get a live frame preview as you drag, and your watch position is restored
+  on release.
+- **"+ Add a sponsor segment here"** (Status tab) drops a segment at the current
+  playhead; drag its edges to fit. Handy on videos where nothing was detected.
+
+Your edits are saved per video and used for skipping immediately.
+
+### Contributing back to SponsorBlock (optional)
+
+Every segment in the list has 👍 / 👎 buttons, with meaning depending on where it came
+from:
+
+- **A SponsorBlock segment** → up/down **vote** on it.
+- **A segment your model found** → 👍 opens a confirm to **submit it to SponsorBlock**
+  (please fix the boundaries first), so everyone benefits; 👎 dismisses it locally as a
+  false positive.
+
+It's entirely opt-in. A private, locally-generated ID identifies you to SponsorBlock
+for voting/submitting — it's never shown and isn't tied to your Google account.
+
+### Choosing a model
+
+The **Detector** tab lists the available on-device models from a curated Hugging Face
+catalog. The **default is built in** and works offline with no download. You can:
+
+- **Download** an alternative or an improved model (with a progress bar),
+- **Use** any downloaded model as the active one,
+- **Delete** downloads to reclaim space, and
+- **Refresh** to pull the latest catalog.
+
+Downloads are **verified by SHA-256**, and if your active model ever goes missing
+(e.g. the browser evicts it), detection automatically falls back to another available
+model and tells you.
 
 ## How it works
 
@@ -95,7 +136,8 @@ base model, but aren't officially supported.
    human-verified segments instantly (queried privately).
 3. Otherwise it runs a fine-tuned multilingual **token-classification model**
    (distilBERT-based) over the transcript via **Transformers.js / ONNX Runtime Web**,
-   tags sponsor/self-promo/interaction cues, groups them into segments, and skips.
+   on a background **Web Worker** (so the UI stays responsive), tags
+   sponsor/self-promo/interaction cues, groups them into segments, and skips.
 
 A confidence-biased decoder keeps it on the safe side — it would rather start a skip
 a second late than cut into real content.
@@ -104,9 +146,13 @@ a second late than cut into real content.
 
 All in the **Detector** tab:
 
-- **Custom model** — point sponsor_skip at your own Transformers.js-compatible ONNX
-  token-classifier (a Hugging Face repo id like `you/your-model`, or a URL). Labels
+- **Model manager** — switch between on-device models, download new ones from the
+  Hugging Face catalog, or delete them to free space (see [Choosing a model](#choosing-a-model)).
+- **Custom model** *(override)* — point sponsor_skip at any Transformers.js-compatible
+  ONNX token-classifier (a Hugging Face repo id like `you/your-model`, or a URL). Labels
   must be `O, sponsor, selfpromo, interaction`.
+- **Run on CPU or GPU** — CPU (WebAssembly) is the default and works everywhere; GPU
+  (WebGPU) can be faster on some machines and falls back to CPU automatically.
 - **Local LLM (Ollama)** — for development, switch detection to a local LLM. Run
   `OLLAMA_ORIGINS=* ollama serve` so the extension can reach it.
 - **Reset sponsor cache** — clears cached results so videos are re-analyzed.
@@ -116,7 +162,7 @@ All in the **Detector** tab:
 - Needs a caption/transcript to work; videos with captions disabled can't be analyzed.
 - YouTube rate-limits caption downloads — heavy use can briefly fail (the icon shows it); it recovers on its own.
 - It targets **creator-read sponsorships**, not YouTube's own ad breaks.
-- Boundaries are caption-granular (a second or two), and it's tuned for precision, so it occasionally misses a softer sponsor read rather than risk over-skipping.
+- Auto-detected boundaries are caption-granular (a second or two) and tuned for precision, so it occasionally misses a softer read rather than over-skip — you can always drag a boundary or add a segment by hand to fix it.
 
 ## Development
 
@@ -126,8 +172,10 @@ produced by a separate training pipeline. The Transformers.js runtime in `vendor
 is bundled with esbuild.
 
 ```
-src/        content script, background worker, offscreen model host, detector
+src/        content script, background worker, offscreen model host,
+            detector.worker.js (model runs here, off the main thread)
 popup/      the tabbed UI
+models/     bundled model catalog (offline fallback for the HF catalog)
 model/      tokenizer + config (+ onnx weights, provided via Release)
 vendor/     Transformers.js + ONNX Runtime WASM
 icons/      app icons
