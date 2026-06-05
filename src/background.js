@@ -189,7 +189,7 @@ function toSegments(parsed, cues) {
 // the free-text response instead (see extractJSON).
 // --------------------------------------------------------------------------- //
 async function callLLM(cfg, prompt, signal) {
-  console.log(`[ad_skip:bg] POST ${cfg.endpoint} model=${cfg.model} promptChars=${prompt.length}`);
+  console.log(`[sponsor_skip:bg] POST ${cfg.endpoint} model=${cfg.model} promptChars=${prompt.length}`);
   const res = await fetch(cfg.endpoint, {
     method: "POST",
     signal,
@@ -229,7 +229,7 @@ function makeChunks(cues, window, overlap) {
 function dropLongSegments(segs, maxSeconds) {
   return segs.filter((s) => {
     const ok = s.end - s.start <= maxSeconds;
-    if (!ok) console.warn(`[ad_skip:bg] dropped ${(s.end - s.start).toFixed(0)}s segment (> ${maxSeconds}s guard)`);
+    if (!ok) console.warn(`[sponsor_skip:bg] dropped ${(s.end - s.start).toFixed(0)}s segment (> ${maxSeconds}s guard)`);
     return ok;
   });
 }
@@ -336,7 +336,7 @@ async function localDetect(cues, cfg, signal) {
   await ensureOffscreen();
   const opts = { maxSegmentSeconds: cfg.maxSegmentSeconds };
   const payload = {
-    target: "offscreen-adskip", type: "localDetect", cues, opts,
+    target: "offscreen-sponsorskip", type: "localDetect", cues, opts,
     model: cfg.customModel || undefined, // undefined -> bundled model
     device: cfg.device, // "wasm" (CPU) | "webgpu" (GPU); offscreen falls back if needed
   };
@@ -353,7 +353,7 @@ async function localDetect(cues, cfg, signal) {
     } catch (err) {
       lastErr = err;
       if (/Receiving end does not exist|message port closed/i.test(err.message)) {
-        console.log(`[ad_skip:bg] offscreen not ready (attempt ${attempt + 1}), retrying…`);
+        console.log(`[sponsor_skip:bg] offscreen not ready (attempt ${attempt + 1}), retrying…`);
         await new Promise((r) => setTimeout(r, 400));
         continue;
       }
@@ -385,13 +385,13 @@ async function detect({ videoId, title, lang, cues }, signal) {
       try {
         const sb = await fetchSponsorBlock(videoId, signal);
         if (sb.length) {
-          console.log(`[ad_skip:bg] SponsorBlock hit: ${sb.length} segment(s)`);
+          console.log(`[sponsor_skip:bg] SponsorBlock hit: ${sb.length} segment(s)`);
           await saveResult(videoId, title, sb, "sponsorblock");
           return { segments: sb, source: "sponsorblock" };
         }
       } catch (err) {
         if (signal?.aborted) throw err;
-        console.warn("[ad_skip:bg] SponsorBlock lookup failed", err);
+        console.warn("[sponsor_skip:bg] SponsorBlock lookup failed", err);
       }
     }
     return { needTranscript: true };
@@ -449,7 +449,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   const tabId = sender.tab?.id;
   if (msg?.type === "abort") {
     if (active && active.videoId === msg.videoId) {
-      console.log(`[ad_skip:bg] abort ${msg.videoId}`);
+      console.log(`[sponsor_skip:bg] abort ${msg.videoId}`);
       active.controller.abort();
       active = null;
     }
@@ -484,7 +484,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 
   if (msg?.type !== "detect") return;
 
-  console.log(`[ad_skip:bg] detect request: ${msg.videoId} (${msg.cues?.length} cues)`);
+  console.log(`[sponsor_skip:bg] detect request: ${msg.videoId} (${msg.cues?.length} cues)`);
   if (active) active.controller.abort(); // supersede any in-flight detection
   const controller = new AbortController();
   active = { videoId: msg.videoId, controller };
@@ -494,10 +494,10 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     .then((r) => {
       if (r.needTranscript) {
         // discovery missed; keep the "…" badge — the detection-phase request follows
-        console.log(`[ad_skip:bg] no fast-path for ${msg.videoId}; awaiting transcript`);
+        console.log(`[sponsor_skip:bg] no fast-path for ${msg.videoId}; awaiting transcript`);
       } else {
         const n = r.segments?.length || 0;
-        console.log(`[ad_skip:bg] detect done: ${n} segment(s)`, r.segments);
+        console.log(`[sponsor_skip:bg] detect done: ${n} segment(s)`, r.segments);
         setBadge(tabId, String(n), n ? "#2e7d32" : "#5f6368");
         chrome.storage.local.remove("lastError"); // a clean result clears any prior error
       }
@@ -505,12 +505,12 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     })
     .catch((err) => {
       if (controller.signal.aborted) {
-        console.log(`[ad_skip:bg] detect aborted: ${msg.videoId}`);
+        console.log(`[sponsor_skip:bg] detect aborted: ${msg.videoId}`);
         setBadge(tabId, "");
         sendResponse({ aborted: true });
       } else {
         const reason = String(err?.message || err);
-        console.warn("[ad_skip:bg] detect failed:", err);
+        console.warn("[sponsor_skip:bg] detect failed:", err);
         setBadge(tabId, "!", "#c5221f");
         chrome.storage.local.set({ lastError: { videoId: msg.videoId, reason, at: Date.now() } });
         sendResponse({ error: reason });

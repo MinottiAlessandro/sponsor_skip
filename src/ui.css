@@ -1,5 +1,5 @@
 /* On-player skip button + toast injected by content.js */
-.adskip-btn {
+.sponsorskip-btn {
   position: absolute;
   right: 16px;
   bottom: 70px;
@@ -16,14 +16,14 @@
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
   transition: background 0.15s ease, transform 0.1s ease, bottom 0.2s ease;
 }
-.adskip-btn:hover {
+.sponsorskip-btn:hover {
   background: #ffd21e;
   color: #1a1500;
   border-color: #ffd21e;
 }
 
 /* Status pill: "Analyzing sponsors…" / "✓ N sponsors found" / error */
-.adskip-status {
+.sponsorskip-status {
   position: absolute;
   top: 12px;
   left: 12px;
@@ -41,10 +41,10 @@
   pointer-events: none;
   transition: top 0.2s ease, left 0.2s ease;
 }
-.adskip-status.error {
+.sponsorskip-status.error {
   border-left-color: #ff5252;
 }
-.adskip-status .adskip-x {
+.sponsorskip-status .sponsorskip-x {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -56,24 +56,24 @@
   font-weight: 800;
   font-size: 11px;
 }
-.adskip-status .adskip-spinner {
+.sponsorskip-status .sponsorskip-spinner {
   width: 12px;
   height: 12px;
   border: 2px solid rgba(255, 255, 255, 0.3);
   border-top-color: #fff;
   border-radius: 50%;
-  animation: adskip-spin 0.8s linear infinite;
+  animation: sponsorskip-spin 0.8s linear infinite;
 }
-.adskip-status .adskip-check {
+.sponsorskip-status .sponsorskip-check {
   color: #5fd07a;
   font-weight: 700;
 }
-@keyframes adskip-spin {
+@keyframes sponsorskip-spin {
   to { transform: rotate(360deg); }
 }
 
 /* Yellow overlay on the progress bar where sponsors are */
-.adskip-marker {
+.sponsorskip-marker {
   position: absolute;
   top: 0;
   height: 100%;
@@ -84,7 +84,7 @@
 }
 
 /* Auto-skip countdown pill (click to cancel) */
-.adskip-countdown {
+.sponsorskip-countdown {
   position: absolute;
   right: 16px;
   bottom: 70px;
@@ -98,16 +98,16 @@
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
   transition: bottom 0.2s ease;
 }
-.adskip-countdown .adskip-cancel {
+.sponsorskip-countdown .sponsorskip-cancel {
   margin-left: 8px;
   opacity: 0.8;
   font-weight: 500;
 }
-.adskip-countdown:hover .adskip-cancel {
+.sponsorskip-countdown:hover .sponsorskip-cancel {
   text-decoration: underline;
 }
 
-.adskip-toast {
+.sponsorskip-toast {
   position: absolute;
   left: 16px;
   bottom: 70px;
@@ -118,9 +118,9 @@
   background: rgba(0, 0, 0, 0.82);
   border-radius: 4px;
   pointer-events: none;
-  animation: adskip-fade 1.8s ease forwards;
+  animation: sponsorskip-fade 1.8s ease forwards;
 }
-@keyframes adskip-fade {
+@keyframes sponsorskip-fade {
   0% { opacity: 0; }
   12% { opacity: 1; }
   80% { opacity: 1; }

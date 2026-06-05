@@ -31,7 +31,7 @@
     const { videoId, title, apiKey } = getData();
     if (!videoId) return false;
     window.postMessage(
-      { source: "ad_skip", type: "video", videoId, title, apiKey },
+      { source: "sponsor_skip", type: "video", videoId, title, apiKey },
       "*"
     );
     return true;

@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="icons/icon128.png" width="96" alt="ad_skip logo" />
+  <img src="icons/icon128.png" width="96" alt="sponsor_skip logo" />
 </p>
 
-<h1 align="center">ad_skip</h1>
+<h1 align="center">sponsor_skip</h1>
 
 <p align="center">
   <b>Automatically skip in-video, creator-read sponsorships on YouTube — fully on your device.</b><br/>
@@ -27,7 +27,7 @@
 ## What it does
 
 Creators get paid to read out sponsor spots mid-video ("today's video is brought to
-you by…"). **ad_skip** finds those segments from the video's captions and skips them
+you by…"). **sponsor_skip** finds those segments from the video's captions and skips them
 for you — automatically, or with a one-click button.
 
 It runs a small AI model **entirely in your browser**. No account, no servers, no
@@ -43,7 +43,7 @@ API keys — the transcript and everything else **never leave your device**.
 ## Privacy first
 
 This is the whole point. Detection uses a bundled neural model executed locally
-through WebAssembly. The only network requests ad_skip makes are:
+through WebAssembly. The only network requests sponsor_skip makes are:
 
 | Request | Why | Private? |
 |---|---|---|
@@ -54,7 +54,7 @@ No telemetry. No analytics. No sponsor data sent anywhere.
 
 ## Install
 
-> ad_skip isn't on the Chrome Web Store yet — install it unpacked (Chrome, Edge, Brave, or any Chromium browser).
+> sponsor_skip isn't on the Chrome Web Store yet — install it unpacked (Chrome, Edge, Brave, or any Chromium browser).
 
 **Recommended (ready to run):**
 
@@ -90,7 +90,7 @@ base model, but aren't officially supported.
 
 ## How it works
 
-1. ad_skip reads the video's caption track (the same one YouTube's player uses).
+1. sponsor_skip reads the video's caption track (the same one YouTube's player uses).
 2. For videos the SponsorBlock community has already labeled, it uses those
    human-verified segments instantly (queried privately).
 3. Otherwise it runs a fine-tuned multilingual **token-classification model**
@@ -104,7 +104,7 @@ a second late than cut into real content.
 
 All in the **Detector** tab:
 
-- **Custom model** — point ad_skip at your own Transformers.js-compatible ONNX
+- **Custom model** — point sponsor_skip at your own Transformers.js-compatible ONNX
   token-classifier (a Hugging Face repo id like `you/your-model`, or a URL). Labels
   must be `O, sponsor, selfpromo, interaction`.
 - **Local LLM (Ollama)** — for development, switch detection to a local LLM. Run
@@ -144,7 +144,7 @@ the SponsorBlock community database.
 
 ## Support
 
-If ad_skip saves you time, you can buy me a coffee — it genuinely helps and is hugely
+If sponsor_skip saves you time, you can buy me a coffee — it genuinely helps and is hugely
 appreciated. ☕
 
 <p>

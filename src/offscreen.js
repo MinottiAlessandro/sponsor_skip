@@ -11,7 +11,7 @@
 
 import { detectLocal } from "./local_detector.js"; // no deps; safe to import statically
 
-console.log("[ad_skip:offscreen] script loaded");
+console.log("[sponsor_skip:offscreen] script loaded");
 
 // Keyed by model id + device so switching either (advanced settings) reloads. The
 // bundled model is id "model" (loaded from the extension); any other id is treated
@@ -29,7 +29,7 @@ function load(modelId, device) {
     loaded = {
       key,
       promise: (async () => {
-        console.log(`[ad_skip:offscreen] importing transformers.js… (model: ${modelId}, device: ${device})`);
+        console.log(`[sponsor_skip:offscreen] importing transformers.js… (model: ${modelId}, device: ${device})`);
         const { env, AutoTokenizer, AutoModelForTokenClassification, Tensor } = await import(
           "../vendor/transformers.bundle.mjs"
         );
@@ -45,14 +45,14 @@ function load(modelId, device) {
         env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL("vendor/");
         env.backends.onnx.wasm.numThreads = 1;
         env.backends.onnx.wasm.proxy = false;
-        console.log("[ad_skip:offscreen] loading tokenizer…");
+        console.log("[sponsor_skip:offscreen] loading tokenizer…");
         const tokenizer = await AutoTokenizer.from_pretrained(modelId);
-        console.log(`[ad_skip:offscreen] tokenizer ok; loading model (${device}/q8)…`);
+        console.log(`[sponsor_skip:offscreen] tokenizer ok; loading model (${device}/q8)…`);
         const model = await AutoModelForTokenClassification.from_pretrained(modelId, {
           dtype: "q8",
           device,
         });
-        console.log(`[ad_skip:offscreen] model ready (device: ${device})`);
+        console.log(`[sponsor_skip:offscreen] model ready (device: ${device})`);
         return { tokenizer, model, Tensor, device };
       })().catch((err) => {
         loaded = { key: null, promise: null }; // allow a retry / different model or device
@@ -74,12 +74,12 @@ function chooseDevice(requested) {
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.target !== "offscreen-adskip") return;
+  if (msg?.target !== "offscreen-sponsorskip") return;
   if (msg.type === "localDetect") {
     (async () => {
       const run = async (device) => {
         const { tokenizer, model, Tensor } = await load(msg.model, device);
-        console.log(`[ad_skip:offscreen] detecting over ${msg.cues?.length || 0} cues (device: ${device})…`);
+        console.log(`[sponsor_skip:offscreen] detecting over ${msg.cues?.length || 0} cues (device: ${device})…`);
         const t0 = performance.now(); // inference only — the model load above is one-time
         const segments = await detectLocal(msg.cues, { tokenizer, model, Tensor }, msg.opts || {});
         return { segments, ms: Math.round(performance.now() - t0) };
@@ -93,16 +93,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
           // Any WebGPU failure (load OR inference — e.g. an op the int8 model needs
           // isn't supported) downgrades to CPU for this and future requests.
           if (device === "webgpu") {
-            console.warn("[ad_skip:offscreen] WebGPU failed — falling back to CPU (wasm)", err);
+            console.warn("[sponsor_skip:offscreen] WebGPU failed — falling back to CPU (wasm)", err);
             webgpuBroken = true;
             device = "wasm";
             out = await run("wasm");
           } else throw err;
         }
-        console.log(`[ad_skip:offscreen] done: ${out.segments.length} segment(s) (device: ${device}, ${out.ms}ms)`);
+        console.log(`[sponsor_skip:offscreen] done: ${out.segments.length} segment(s) (device: ${device}, ${out.ms}ms)`);
         sendResponse({ ok: true, segments: out.segments, device, ms: out.ms });
       } catch (err) {
-        console.error("[ad_skip:offscreen] detect failed", err);
+        console.error("[sponsor_skip:offscreen] detect failed", err);
         sendResponse({ ok: false, error: String(err?.stack || err) });
       }
     })();

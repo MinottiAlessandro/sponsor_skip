@@ -60,8 +60,8 @@ function injectPlayerReader() {
 window.addEventListener("message", (e) => {
   if (e.source !== window) return;
   const d = e.data;
-  if (!d || d.source !== "ad_skip" || d.type !== "video") return;
-  console.log("[ad_skip] video message received:", {
+  if (!d || d.source !== "sponsor_skip" || d.type !== "video") return;
+  console.log("[sponsor_skip] video message received:", {
     videoId: d.videoId,
     hasApiKey: !!d.apiKey,
   });
@@ -70,7 +70,7 @@ window.addEventListener("message", (e) => {
   try {
     onVideo(d);
   } catch (err) {
-    console.warn("[ad_skip] video handling", err);
+    console.warn("[sponsor_skip] video handling", err);
   }
 });
 
@@ -114,7 +114,7 @@ async function fetchCaptionTracks(videoId, apiKey, signal) {
     if (tracks.length) {
       const audioLang =
         tracks[r?.audioTracks?.[0]?.defaultCaptionTrackIndex || 0]?.lang || null;
-      console.log(`[ad_skip] caption tracks via ${client.clientName}: ${tracks.length}`);
+      console.log(`[sponsor_skip] caption tracks via ${client.clientName}: ${tracks.length}`);
       return { tracks, audioLang };
     }
   }
@@ -137,29 +137,29 @@ function pickTrack(tracks, audioLang) {
 async function fetchCues(track, signal) {
   const url = new URL(track.baseUrl);
   url.searchParams.set("fmt", "json3");
-  console.log("[ad_skip] GET", url.toString());
+  console.log("[sponsor_skip] GET", url.toString());
   // YouTube rate-limits the caption endpoint; retry transient 429s with backoff.
   let res, body;
   for (let attempt = 0; attempt < 3; attempt++) {
     res = await fetch(url.toString(), { credentials: "include", signal });
     body = await res.text();
-    console.log(`[ad_skip] timedtext status=${res.status} bodyLength=${body.length}`);
+    console.log(`[sponsor_skip] timedtext status=${res.status} bodyLength=${body.length}`);
     if (res.status !== 429 || attempt === 2) break;
     const wait = 800 * 2 ** attempt; // 0.8s, 1.6s
-    console.warn(`[ad_skip] timedtext 429 — retrying in ${wait}ms`);
+    console.warn(`[sponsor_skip] timedtext 429 — retrying in ${wait}ms`);
     await new Promise((r) => setTimeout(r, wait));
     if (signal?.aborted) throw new DOMException("aborted", "AbortError");
   }
   if (!res.ok) throw new Error(`timedtext ${res.status}`);
   if (!body.trim()) {
-    console.warn("[ad_skip] timedtext returned an empty body");
+    console.warn("[sponsor_skip] timedtext returned an empty body");
     return [];
   }
   let data;
   try {
     data = JSON.parse(body);
   } catch (e) {
-    console.warn("[ad_skip] timedtext not JSON; first 200 chars:", body.slice(0, 200));
+    console.warn("[sponsor_skip] timedtext not JSON; first 200 chars:", body.slice(0, 200));
     throw e;
   }
   const cues = [];
@@ -202,16 +202,16 @@ function setStatus(analyzing, text, autoHideMs, isError) {
   const host = statusHost();
   if (!statusEl) {
     statusEl = document.createElement("div");
-    statusEl.className = "adskip-status";
+    statusEl.className = "sponsorskip-status";
   }
   if (statusEl.parentElement !== host) host.appendChild(statusEl);
   statusEl.classList.toggle("done", !analyzing);
   statusEl.classList.toggle("error", !!isError);
   const icon = isError
-    ? '<span class="adskip-x">!</span>'
+    ? '<span class="sponsorskip-x">!</span>'
     : analyzing
-    ? '<span class="adskip-spinner"></span>'
-    : '<span class="adskip-check">✓</span>';
+    ? '<span class="sponsorskip-spinner"></span>'
+    : '<span class="sponsorskip-check">✓</span>';
   statusEl.innerHTML = `${icon}<span>${text}</span>`;
   statusEl.style.display = "flex";
   positionStatus();
@@ -245,7 +245,7 @@ function hideStatus() {
 
 // Surface a failure on the page pill AND the toolbar icon (popup expands it).
 function reportError(videoId, reason) {
-  console.warn("[ad_skip]", reason);
+  console.warn("[sponsor_skip]", reason);
   setStatus(false, reason, 8000, true);
   chrome.runtime.sendMessage({ type: "detectError", videoId, reason }).catch(() => {});
 }
@@ -282,7 +282,7 @@ function onVideo(msg) {
   // Debounce: only process if the user stays here a moment (avoids queueing up
   // detection for videos they're quickly flipping through).
   debounceTimer = setTimeout(() => {
-    runDetection(msg).catch((err) => console.warn("[ad_skip] detection", err));
+    runDetection(msg).catch((err) => console.warn("[sponsor_skip] detection", err));
   }, DETECT_DEBOUNCE_MS);
 }
 
@@ -303,7 +303,7 @@ async function runDetection(msg) {
       title: msg.title,
     });
   } catch (err) {
-    if (!stale()) console.warn("[ad_skip] detect message failed", err);
+    if (!stale()) console.warn("[sponsor_skip] detect message failed", err);
     return;
   }
   if (stale()) return;
@@ -321,11 +321,11 @@ async function runDetection(msg) {
 
     const track = pickTrack(tracks, audioLang);
     if (!track) {
-      console.warn("[ad_skip] no usable caption track", tracks);
+      console.warn("[sponsor_skip] no usable caption track", tracks);
       reportError(msg.videoId, "No captions available for this video.");
       return;
     }
-    console.log("[ad_skip] picked track:", track.lang, track.kind || "manual");
+    console.log("[sponsor_skip] picked track:", track.lang, track.kind || "manual");
 
     let cues;
     try {
@@ -335,13 +335,13 @@ async function runDetection(msg) {
       return;
     }
     if (stale()) return;
-    console.log(`[ad_skip] fetched ${cues.length} cues`);
+    console.log(`[sponsor_skip] fetched ${cues.length} cues`);
     if (!cues.length) {
       reportError(msg.videoId, "No transcript available for this video.");
       return;
     }
 
-    console.log("[ad_skip] requesting detection from background…");
+    console.log("[sponsor_skip] requesting detection from background…");
     try {
       resp = await chrome.runtime.sendMessage({
         type: "detect",
@@ -351,7 +351,7 @@ async function runDetection(msg) {
         cues,
       });
     } catch (err) {
-      if (!stale()) console.warn("[ad_skip] detect message failed", err);
+      if (!stale()) console.warn("[sponsor_skip] detect message failed", err);
       return;
     }
   }
@@ -360,7 +360,7 @@ async function runDetection(msg) {
   if (stale()) return; // user navigated away while detection was running
   if (!resp || resp.aborted) return;
   if (resp.error) {
-    console.warn("[ad_skip] detection error:", resp.error);
+    console.warn("[sponsor_skip] detection error:", resp.error);
     setStatus(false, "Detection failed", 8000, true);
     return;
   }
@@ -370,7 +370,7 @@ async function runDetection(msg) {
   lastSource = resp.source || null;
   lastDevice = resp.device || null;
   lastMs = resp.ms ?? null;
-  console.log(`[ad_skip] ${segments.length} segment(s) for ${msg.videoId} (${lastSource || "?"}${lastDevice ? "/" + lastDevice : ""}${lastMs != null ? ", " + lastMs + "ms" : ""})`, segments);
+  console.log(`[sponsor_skip] ${segments.length} segment(s) for ${msg.videoId} (${lastSource || "?"}${lastDevice ? "/" + lastDevice : ""}${lastMs != null ? ", " + lastMs + "ms" : ""})`, segments);
   const n = segments.length;
   const via = n && lastSource ? ` · ${sourceLabel(lastSource)}` : "";
   setStatus(false, n ? `${n} sponsor${n > 1 ? "s" : ""} found${via}` : "No sponsors found", 5000);
@@ -401,7 +401,7 @@ function ytBottomRightObstacle(player, plr, box) {
         if (seen.has(el)) continue;
         seen.add(el);
         if (!player.contains(el)) continue;
-        if (el.closest(".adskip-btn, .adskip-countdown, .adskip-status, .adskip-toast")) continue;
+        if (el.closest(".sponsorskip-btn, .sponsorskip-countdown, .sponsorskip-status, .sponsorskip-toast")) continue;
         const er = el.getBoundingClientRect();
         if (er.width <= 0 || er.height <= 0) continue;
         // Ignore big containers (the video, gradient, control bar, player itself) —
@@ -542,7 +542,7 @@ class SkipController {
   showCountdown(seg, remaining) {
     if (!this.countdown) {
       const el = document.createElement("div");
-      el.className = "adskip-countdown";
+      el.className = "sponsorskip-countdown";
       el.addEventListener("click", () => {
         if (this.countdown) this.ignored.add(this.countdown.seg); // opt out of this one
         this.cancelCountdown();
@@ -552,7 +552,7 @@ class SkipController {
     }
     this.countdown.seg = seg;
     this.countdown.el.innerHTML =
-      `Auto-skip in ${Math.max(0, remaining)}s <span class="adskip-cancel">✕ cancel</span>`;
+      `Auto-skip in ${Math.max(0, remaining)}s <span class="sponsorskip-cancel">✕ cancel</span>`;
     this.positionBottomControls();
   }
 
@@ -581,7 +581,7 @@ class SkipController {
     this.markers.forEach((m) => m.remove());
     this.markers = this.segments.map((seg) => {
       const m = document.createElement("div");
-      m.className = "adskip-marker";
+      m.className = "sponsorskip-marker";
       m.style.left = `${(seg.start / dur) * 100}%`;
       m.style.width = `${((seg.end - seg.start) / dur) * 100}%`;
       bar.appendChild(m);
@@ -624,7 +624,7 @@ class SkipController {
   showButton(seg) {
     if (!this.btn) {
       this.btn = document.createElement("button");
-      this.btn.className = "adskip-btn";
+      this.btn.className = "sponsorskip-btn";
       this.player()?.appendChild(this.btn);
       this.btn.addEventListener("click", () => {
         this.video.currentTime = this.activeSeg ? this.activeSeg.end : this.video.currentTime;
@@ -643,7 +643,7 @@ class SkipController {
 
   toast(text) {
     const el = document.createElement("div");
-    el.className = "adskip-toast";
+    el.className = "sponsorskip-toast";
     el.textContent = text;
     this.player()?.appendChild(el);
     setTimeout(() => el.remove(), 1800);
@@ -691,7 +691,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 });
 
 async function boot() {
-  console.log("[ad_skip] content script loaded:", location.href);
+  console.log("[sponsor_skip] content script loaded:", location.href);
   await loadSettings();
   if (location.pathname === "/watch") injectPlayerReader();
 }
