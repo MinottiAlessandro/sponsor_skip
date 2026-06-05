@@ -14,7 +14,7 @@
   cursor: pointer;
   display: none;
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
-  transition: background 0.15s ease, transform 0.1s ease;
+  transition: background 0.15s ease, transform 0.1s ease, bottom 0.2s ease;
 }
 .adskip-btn:hover {
   background: #ffd21e;
@@ -39,7 +39,7 @@
   border-left: 3px solid #ffd21e; /* brand accent */
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.35);
   pointer-events: none;
-  transition: top 0.2s ease;
+  transition: top 0.2s ease, left 0.2s ease;
 }
 .adskip-status.error {
   border-left-color: #ff5252;
@@ -96,6 +96,7 @@
   border-radius: 4px;
   cursor: pointer;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  transition: bottom 0.2s ease;
 }
 .adskip-countdown .adskip-cancel {
   margin-left: 8px;

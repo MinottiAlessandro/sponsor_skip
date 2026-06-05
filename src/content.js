@@ -225,13 +225,15 @@ function positionStatus() {
   if (!statusEl || statusEl.style.display === "none") return;
   const host = statusHost();
   const promo = host.querySelector?.(".ytp-paid-content-overlay");
-  let top = 12;
+  let top = 12, left = 12;
   if (promo && promo.offsetParent !== null && promo.getBoundingClientRect().height > 0) {
     const hr = host.getBoundingClientRect();
     const pr = promo.getBoundingClientRect();
-    top = Math.max(12, pr.bottom - hr.top + 8);
+    top = Math.max(12, pr.bottom - hr.top + 8); // sit just below the overlay
+    left = Math.max(12, pr.left - hr.left); // and line our left edge up with it
   }
   statusEl.style.top = `${top}px`;
+  statusEl.style.left = `${left}px`;
 }
 
 function hideStatus() {
@@ -375,6 +377,38 @@ async function runDetection(msg) {
 // --------------------------------------------------------------------------- //
 // Skip controller + UI
 // --------------------------------------------------------------------------- //
+// YouTube parks buttons in the player's bottom-right that can collide with our skip
+// button — the ad "Skip" button (during ads) and the "Jump ahead" / "Skip ▶▶" button
+// (in the control bar, shown on hover). Their class names differ across YouTube builds
+// and design systems, so rather than match names we hit-test the screen box our control
+// occupies and find any small, visible player element sitting there that isn't ours.
+// Returns that element's rect (the thing to clear), or null. `box` is in viewport
+// coords; `plr` is the player rect (used to ignore full-size containers).
+function ytBottomRightObstacle(player, plr, box) {
+  const xs = [box.left + 6, (box.left + box.right) / 2, box.right - 6];
+  const ys = [box.top + 6, (box.top + box.bottom) / 2, box.bottom - 6];
+  let best = null;
+  const seen = new Set();
+  for (const x of xs) {
+    for (const y of ys) {
+      for (const el of document.elementsFromPoint(x, y)) {
+        if (seen.has(el)) continue;
+        seen.add(el);
+        if (!player.contains(el)) continue;
+        if (el.closest(".adskip-btn, .adskip-countdown, .adskip-status, .adskip-toast")) continue;
+        const er = el.getBoundingClientRect();
+        if (er.width <= 0 || er.height <= 0) continue;
+        // Ignore big containers (the video, gradient, control bar, player itself) —
+        // we only want a button/pill actually sitting at our control's height.
+        if (er.width > plr.width * 0.5 || er.height > plr.height * 0.35) continue;
+        if (el.checkVisibility?.({ opacityProperty: true, visibilityProperty: true }) === false) continue;
+        if (!best || er.top < best.top) best = er; // highest top → clears all of them
+      }
+    }
+  }
+  return best;
+}
+
 class SkipController {
   constructor(video, segments, settings) {
     this.video = video;
@@ -395,6 +429,16 @@ class SkipController {
     document.addEventListener("fullscreenchange", this.onLayout);
     this.ensureMarkers();
     this.observeBar();
+    // YouTube's bottom-right buttons (ad "Skip" / "Jump ahead") can appear/vanish or
+    // shift at any time, so poll as a backstop to keep our controls clear of them.
+    this.bottomTicker = setInterval(() => this.positionBottomControls(), 500);
+    // …and reposition the instant the player chrome changes: hovering reveals the
+    // control bar and shifts YouTube's skip button up; entering/leaving an ad moves
+    // it too. YouTube flags both via class changes (ytp-autohide, ad-showing) on the
+    // player, so a class observer catches them immediately (no 500ms lag on hover).
+    this.playerObserver = new MutationObserver(() => this.positionBottomControls());
+    const pl = this.player();
+    if (pl) this.playerObserver.observe(pl, { attributes: true, attributeFilter: ["class"] });
   }
 
   // YouTube rebuilds the progress bar (SPA nav, player chrome re-renders, ad
@@ -503,6 +547,7 @@ class SkipController {
     this.countdown.seg = seg;
     this.countdown.el.innerHTML =
       `Auto-skip in ${Math.max(0, remaining)}s <span class="adskip-cancel">✕ cancel</span>`;
+    this.positionBottomControls();
   }
 
   doSkip(seg) {
@@ -546,6 +591,30 @@ class SkipController {
     );
   }
 
+  // Lift the skip button / countdown above whatever YouTube is showing in the
+  // bottom-right (ad "Skip" or "Jump ahead" button), so the two never overlap. No-op
+  // when neither is visible or there's no obstacle (controls stay at the CSS default).
+  positionBottomControls() {
+    const cd = this.countdown?.el;
+    const btnVisible = this.btn && this.btn.style.display !== "none";
+    const anchor = btnVisible ? this.btn : cd;
+    if (!anchor) return;
+    const player = this.player();
+    if (!player) return;
+    const plr = player.getBoundingClientRect();
+    const r = anchor.getBoundingClientRect();
+    // Probe the box our control occupies at its CSS-default home (bottom:70px) — NOT
+    // wherever we may have already lifted it to, or moving out of the overlap would
+    // "lose" the obstacle and we'd oscillate. Same width/height/right edge as now.
+    const homeBottom = plr.bottom - 70;
+    const box = { left: r.left, right: r.right, top: homeBottom - r.height, bottom: homeBottom };
+    let bottom = 70; // CSS default
+    const obstacle = ytBottomRightObstacle(player, plr, box);
+    if (obstacle) bottom = Math.max(70, plr.bottom - obstacle.top + 12); // 12px gap above it
+    if (btnVisible) this.btn.style.bottom = `${bottom}px`;
+    if (cd) cd.style.bottom = `${bottom}px`;
+  }
+
   showButton(seg) {
     if (!this.btn) {
       this.btn = document.createElement("button");
@@ -559,6 +628,7 @@ class SkipController {
     const secs = Math.max(1, Math.round(seg.end - this.video.currentTime));
     this.btn.textContent = `Skip ${seg.category} (${secs}s) ▶`;
     this.btn.style.display = "block";
+    this.positionBottomControls();
   }
 
   hideButton() {
@@ -579,6 +649,9 @@ class SkipController {
     this.video.removeEventListener("durationchange", this.onLayout);
     window.removeEventListener("resize", this.onLayout);
     document.removeEventListener("fullscreenchange", this.onLayout);
+    clearInterval(this.bottomTicker);
+    this.playerObserver?.disconnect();
+    this.playerObserver = null;
     this.markerObserver?.disconnect();
     this.markerObserver = null;
     this.cancelCountdown();
