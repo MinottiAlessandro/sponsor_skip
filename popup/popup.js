@@ -2,6 +2,7 @@
 // script), shared with the content script so both filter segments identically.
 const $ = (id) => document.getElementById(id);
 let settings = { ...DEFAULTS };
+let popupVideoId = null; // the video the active tab is currently on (for submit/dismiss)
 
 // ---- tabs ---------------------------------------------------------------- //
 document.querySelectorAll(".tab").forEach((t) =>
@@ -134,6 +135,8 @@ function bind() {
   });
 
   $("error").addEventListener("click", () => $("error").classList.toggle("open"));
+  $("cCancel").addEventListener("click", cancelSubmit);
+  $("cSubmit").addEventListener("click", submitPending);
   $("opentest").addEventListener("click", () => window.open(chrome.runtime.getURL("debug/test.html")));
   $("resetcache").addEventListener("click", resetCache);
 }
@@ -161,6 +164,9 @@ async function renderStatus() {
 
   const r = $("result");
   if (!data) { r.className = "muted"; r.textContent = "Open a YouTube video to detect sponsors."; return; }
+
+  if (popupVideoId !== data.videoId) cancelSubmit(); // close a stale confirm on video change
+  popupVideoId = data.videoId;
 
   // A just-finished detection writes lastResult to storage (which wakes this popup)
   // a beat BEFORE the content script has received the same result — so mid-handoff
@@ -191,12 +197,114 @@ async function renderStatus() {
   }
   const devChip = bits.length ? ` <span class="dev">${bits.join(" · ")}</span>` : "";
   const via = result.source ? `<div class="via">${segs.length} segment(s) · via <b>${srcLabel}</b>${devChip}</div>` : "";
-  r.innerHTML = via + segs.map((s, i) =>
-    `<div class="seg" data-i="${i}"><span class="dot"></span><span class="cat">${s.category}</span>` +
+  r.innerHTML = via + segs.map((s, i) => `<div class="seg" data-i="${i}">${voteCell(s)}` +
+    `<span class="cat">${s.category}</span>` +
     `<span class="time">${fmt(s.start)}–${fmt(s.end)}</span></div>`).join("");
+  // Clicking the row (but not a vote button) seeks the video to the segment start.
   r.querySelectorAll(".seg").forEach((el) =>
-    el.addEventListener("click", () =>
-      chrome.tabs.sendMessage(tab.id, { type: "seek", time: segs[+el.dataset.i].start })));
+    el.addEventListener("click", (e) => {
+      if (e.target.closest(".vote")) return;
+      chrome.tabs.sendMessage(tab.id, { type: "seek", time: segs[+el.dataset.i].start });
+    }));
+  r.querySelectorAll(".vote").forEach((btn) =>
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const seg = segs[+btn.closest(".seg").dataset.i];
+      const up = btn.classList.contains("up");
+      if (seg.uuid) castVote(seg, up ? 1 : 0, btn); // SponsorBlock segment → vote
+      else if (up) startSubmit(seg);                // model segment → contribute it
+      else dismissSegment(seg);                     // model segment → false positive
+    }));
+}
+
+// Each row gets thumbs on the left, but they mean different things by source:
+//   • SponsorBlock segment (has uuid) → up/down VOTE (Phase 1)
+//   • model segment (no uuid)         → 👍 contribute to SponsorBlock / 👎 dismiss (Phase 3)
+// A contributed segment gains a uuid + a ✓ badge and becomes voteable like any other.
+const castVotes = new Map(); // uuid -> 1 (up) | 0 (down), to keep highlight across re-renders
+const sharedBadge = `<span class="shared" title="On SponsorBlock">✓</span>`;
+const thumb = (dir, title, cast) =>
+  `<button class="vote ${dir}${cast ? " cast" : ""}" title="${title}">${dir === "up" ? "👍" : "👎"}</button>`;
+function voteCell(s) {
+  if (s.uuid) {
+    const v = castVotes.get(s.uuid);
+    return `<span class="votes">${s.contributed ? sharedBadge : ""}` +
+      thumb("up", "Upvote on SponsorBlock", v === 1) +
+      thumb("down", "Downvote on SponsorBlock", v === 0) + `</span>`;
+  }
+  if (s.contributed) return `<span class="votes">${sharedBadge}</span>`; // submitted, no uuid back
+  return `<span class="votes">` +
+    thumb("up", "Accurate — add to SponsorBlock", false) +
+    thumb("down", "Wrong — remove (won't skip)", false) + `</span>`;
+}
+
+async function castVote(seg, type, btn) {
+  if (!seg?.uuid) return;
+  const group = btn.closest(".votes");
+  group.querySelectorAll(".vote").forEach((b) => (b.disabled = true));
+  try {
+    const r = await chrome.runtime.sendMessage({ type: "sbVote", uuid: seg.uuid, voteType: type });
+    if (!r?.ok) throw new Error(r?.error || "vote failed");
+    castVotes.set(seg.uuid, type);
+    group.querySelectorAll(".vote").forEach((b) => b.classList.remove("cast"));
+    btn.classList.add("cast");
+    toast(type ? "Upvoted on SponsorBlock — thanks!" : "Downvoted on SponsorBlock");
+  } catch (err) {
+    toast(`Vote failed: ${String(err.message || err)}`);
+  } finally {
+    group.querySelectorAll(".vote").forEach((b) => (b.disabled = false));
+  }
+}
+
+// ---- contribute a model segment to SponsorBlock (Phase 3) ---------------- //
+// Human-in-the-loop: 👍 opens a confirm (reminding the user to fix boundaries on the
+// video first); only an explicit Submit posts it to the public DB.
+let pendingSubmit = null;
+function startSubmit(seg) {
+  pendingSubmit = { start: seg.start, end: seg.end, category: seg.category || "sponsor" };
+  $("cbody").textContent = `Sponsor · ${fmt(seg.start)} – ${fmt(seg.end)}`;
+  $("submitConfirm").hidden = false;
+}
+function cancelSubmit() {
+  pendingSubmit = null;
+  $("submitConfirm").hidden = true;
+}
+async function submitPending() {
+  if (!pendingSubmit || !popupVideoId) return;
+  const seg = pendingSubmit;
+  const sub = $("cSubmit"), cancel = $("cCancel");
+  sub.disabled = cancel.disabled = true;
+  sub.textContent = "Submitting…";
+  try {
+    const r = await chrome.runtime.sendMessage({ type: "sbSubmit", videoId: popupVideoId, segment: seg });
+    if (!r?.ok) throw new Error(r?.error || "submit failed");
+    // Tag it locally so it shows as contributed (and becomes voteable). The server
+    // already has it even if the content script is somehow unreachable.
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      await chrome.tabs.sendMessage(tab.id, { type: "tagContributed", start: seg.start, uuid: r.uuid });
+    } catch { /* content script gone — fine */ }
+    toast("Added to SponsorBlock — thanks! 🎉");
+    cancelSubmit();
+    renderStatus();
+  } catch (err) {
+    toast(`Submit failed: ${String(err.message || err)}`);
+  } finally {
+    sub.disabled = cancel.disabled = false;
+    sub.textContent = "Submit";
+  }
+}
+
+// 👎 on a model segment: drop it from skipping (locally + persisted) as a false positive.
+async function dismissSegment(seg) {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    await chrome.tabs.sendMessage(tab.id, { type: "dismissSegment", start: seg.start });
+    toast("Removed — won't skip this");
+    renderStatus();
+  } catch {
+    toast("Couldn't remove that segment");
+  }
 }
 
 async function resetCache() {

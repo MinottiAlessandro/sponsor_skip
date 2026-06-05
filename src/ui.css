@@ -79,8 +79,57 @@
   height: 100%;
   background: #ffd400;
   z-index: 30;
-  pointer-events: none;
+  pointer-events: none; /* clicks fall through so normal scrubbing still works */
   border-radius: 1px;
+}
+.sponsorskip-marker.editing { background: #ffe14d; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4); }
+
+/* Draggable edge handles to fine-tune a sponsor's start/end. The marker itself is
+   click-through; only these thin edge zones capture the pointer (re-enabled with
+   pointer-events:auto), so scrubbing the rest of the bar is unaffected. */
+.sponsorskip-handle {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 9px;
+  z-index: 31;
+  pointer-events: auto;
+  cursor: ew-resize;
+  touch-action: none; /* let us own the drag gesture on touch/pen */
+}
+.sponsorskip-handle.start { left: -5px; }
+.sponsorskip-handle.end { right: -5px; }
+.sponsorskip-handle::after { /* the visible grip */
+  content: "";
+  position: absolute;
+  top: 1px;
+  bottom: 1px;
+  left: 50%;
+  width: 3px;
+  transform: translateX(-50%);
+  background: rgba(255, 255, 255, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.55);
+  border-radius: 2px;
+  opacity: 0.4;
+  transition: opacity 0.12s ease, transform 0.12s ease;
+}
+.sponsorskip-handle:hover::after,
+.sponsorskip-marker.editing .sponsorskip-handle::after { opacity: 1; }
+.sponsorskip-handle:hover::after { transform: translateX(-50%) scaleX(1.5); }
+
+/* Time bubble shown above the handle while dragging */
+.sponsorskip-scrub {
+  position: absolute;
+  z-index: 62;
+  transform: translateX(-50%);
+  padding: 2px 6px;
+  font: 700 11px/1.2 "YouTube Sans", Roboto, Arial, sans-serif;
+  color: #1a1500;
+  background: #ffd400;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* Auto-skip countdown pill (click to cancel) */

@@ -448,6 +448,55 @@ function ytBottomRightObstacle(player, plr, box) {
   return best;
 }
 
+// m:ss for the drag bubble / toasts.
+function fmtTime(t) {
+  t = Math.max(0, t);
+  return `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
+}
+
+// Persist edited boundaries so they survive re-renders, navigation back, and reload,
+// and so an open popup reflects the new times. We rewrite the same cache keys the
+// background uses (seg:<id>) plus lastResult — the controller's segments are the same
+// objects as lastRawSegments, so their mutated start/end are already captured here.
+async function saveEditedSegments() {
+  if (!currentVideoId || !extensionAlive()) return;
+  try {
+    const { lastResult } = await chrome.storage.local.get("lastResult");
+    const patch = { [`seg:${currentVideoId}`]: lastRawSegments };
+    if (lastResult && lastResult.videoId === currentVideoId) {
+      patch.lastResult = { ...lastResult, segments: lastRawSegments, count: lastRawSegments.length, at: Date.now() };
+    }
+    await chrome.storage.local.set(patch);
+  } catch (err) {
+    console.debug("[sponsor_skip] could not persist boundary edit", err);
+  }
+}
+
+// Keep a small, capped record of segments the user rejected as false positives —
+// useful later as model-improvement signal. Best-effort; never throws into the UI.
+async function logFalsePositive(videoId, seg) {
+  if (!videoId || !seg || !extensionAlive()) return;
+  try {
+    const { sbFalsePositives = [] } = await chrome.storage.local.get("sbFalsePositives");
+    sbFalsePositives.push({ videoId, start: seg.start, end: seg.end, at: Date.now() });
+    await chrome.storage.local.set({ sbFalsePositives: sbFalsePositives.slice(-200) });
+  } catch { /* ignore */ }
+}
+
+// One-time nudge so people discover the draggable edges (shown the first time we
+// ever draw editable markers, then never again).
+let editHintChecked = false;
+async function maybeShowEditHint(controller) {
+  if (editHintChecked || !extensionAlive()) return;
+  editHintChecked = true;
+  try {
+    const { ssHandleHintSeen } = await chrome.storage.local.get("ssHandleHintSeen");
+    if (ssHandleHintSeen) return;
+    await chrome.storage.local.set({ ssHandleHintSeen: true });
+    controller.toast("Tip: drag a yellow edge on the bar to fix a sponsor's start/end");
+  } catch { /* ignore */ }
+}
+
 class SkipController {
   constructor(video, segments, settings) {
     this.video = video;
@@ -458,6 +507,8 @@ class SkipController {
     this.ignored = new Set(); // segments the user cancelled the auto-skip on
     this.countdown = null; // { seg, timer, el }
     this.markers = [];
+    this.dragging = false; // true while the user is dragging a boundary handle
+    this.cleanupDrag = null; // tears down an in-progress drag (used on destroy)
     this.onTime = this.onTime.bind(this);
     this.onLayout = this.renderMarkers.bind(this);
     this.markerObserver = null;
@@ -520,6 +571,7 @@ class SkipController {
   }
 
   onTime() {
+    if (this.dragging) return; // boundary edit in progress — don't skip/preview-fight
     const mode = this.settings.mode;
     if (mode === "off") return;
     if (mode === "auto") return this.handleAuto();
@@ -608,6 +660,7 @@ class SkipController {
   }
 
   renderMarkers() {
+    if (this.dragging) return true; // never rebuild out from under an active drag
     const bar = document.querySelector(".ytp-progress-bar");
     const dur = this.video.duration;
     if (!bar || !dur || !isFinite(dur)) return false;
@@ -617,10 +670,106 @@ class SkipController {
       m.className = "sponsorskip-marker";
       m.style.left = `${(seg.start / dur) * 100}%`;
       m.style.width = `${((seg.end - seg.start) / dur) * 100}%`;
+      // Draggable edge handles to fine-tune where the sponsor really starts/ends.
+      for (const edge of ["start", "end"]) {
+        const h = document.createElement("div");
+        h.className = `sponsorskip-handle ${edge}`;
+        h.addEventListener("pointerdown", (e) => this.beginDrag(seg, edge, h, e));
+        // Keep YouTube from starting a scrub/seek (or showing its hover preview) from
+        // our handle — these listeners live on the progress bar our handle sits in.
+        h.addEventListener("mousedown", (e) => { e.stopPropagation(); e.preventDefault(); });
+        h.addEventListener("click", (e) => { e.stopPropagation(); e.preventDefault(); });
+        m.appendChild(h);
+      }
       bar.appendChild(m);
       return m;
     });
+    if (this.markers.length) maybeShowEditHint(this);
     return true;
+  }
+
+  // Drag a segment's start or end along the progress bar. Live-previews the frame
+  // (like scrubbing) and shows a time bubble; restores playback on release so the
+  // edit is non-destructive to where the user was watching. Persists on release.
+  beginDrag(seg, edge, handle, e) {
+    e.stopPropagation();
+    e.preventDefault();
+    const bar = document.querySelector(".ytp-progress-bar");
+    const dur = this.video.duration;
+    if (!bar || !dur || !isFinite(dur)) return;
+    const barRect = bar.getBoundingClientRect();
+    const marker = handle.parentElement;
+    const MIN = 1; // keep at least 1s between start and end
+
+    const orig = seg[edge];
+    this.dragging = true;
+    marker.classList.add("editing");
+    const resume = { time: this.video.currentTime, playing: !this.video.paused };
+    let engaged = false; // becomes true on the first real move (a bare click does nothing)
+
+    const bubble = document.createElement("div");
+    bubble.className = "sponsorskip-scrub";
+    this.player()?.appendChild(bubble);
+    const placeBubble = (t) => {
+      const plr = this.player().getBoundingClientRect();
+      bubble.textContent = fmtTime(t);
+      // Position at the (clamped) boundary so the bubble stays glued to the edge.
+      bubble.style.left = `${barRect.left - plr.left + (t / dur) * barRect.width}px`;
+      bubble.style.bottom = `${plr.bottom - barRect.top + 10}px`;
+    };
+    placeBubble(orig);
+
+    // Throttle the actual seek to one per frame — pointermove can fire far faster.
+    let pendingT = null, raf = 0;
+    const flushSeek = () => { raf = 0; if (pendingT != null) this.video.currentTime = pendingT; };
+
+    const onMove = (ev) => {
+      const f = Math.min(1, Math.max(0, (ev.clientX - barRect.left) / barRect.width));
+      let t = f * dur;
+      if (edge === "start") t = Math.min(t, seg.end - MIN);
+      else t = Math.max(t, seg.start + MIN);
+      t = Math.max(0, Math.min(dur, t));
+      if (!engaged) { engaged = true; if (resume.playing) this.video.pause(); } // steadier preview
+      seg[edge] = t;
+      marker.style.left = `${(seg.start / dur) * 100}%`;
+      marker.style.width = `${((seg.end - seg.start) / dur) * 100}%`;
+      pendingT = t;
+      if (!raf) raf = requestAnimationFrame(flushSeek);
+      placeBubble(t);
+    };
+
+    const finish = () => {
+      if (!this.dragging) return;
+      if (raf) cancelAnimationFrame(raf);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      handle.releasePointerCapture?.(e.pointerId);
+      bubble.remove();
+      marker.classList.remove("editing");
+      this.dragging = false;
+      this.cleanupDrag = null;
+      const moved = engaged && Math.abs(seg[edge] - orig) > 0.05;
+      if (moved) {
+        seg.edited = true; // user-verified boundary (matters for Phase 3 submission)
+        this.activeSeg = null; // re-evaluate the skip button/countdown with new bounds
+        saveEditedSegments();
+        this.toast(`${edge === "start" ? "Start" : "End"} → ${fmtTime(seg[edge])}`);
+      } else {
+        seg[edge] = orig; // undo a sub-threshold jiggle from a near-click
+      }
+      if (engaged) { // the drag previewed frames — restore where they were watching
+        this.video.currentTime = resume.time;
+        if (resume.playing) this.video.play().catch(() => {});
+      }
+      this.renderMarkers();
+    };
+
+    this.cleanupDrag = finish;
+    handle.setPointerCapture?.(e.pointerId);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
   }
 
   player() {
@@ -683,6 +832,7 @@ class SkipController {
   }
 
   destroy() {
+    this.cleanupDrag?.(); // tear down any in-progress boundary drag + its window listeners
     this.video.removeEventListener("timeupdate", this.onTime);
     this.video.removeEventListener("loadedmetadata", this.onLayout);
     this.video.removeEventListener("durationchange", this.onLayout);
@@ -720,6 +870,27 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     const v = document.querySelector("video.html5-main-video, video");
     if (v) v.currentTime = msg.time;
     sendResponse({ ok: !!v });
+  } else if (msg?.type === "tagContributed" && typeof msg.start === "number") {
+    // A model segment was accepted into SponsorBlock — tag it so it now behaves like
+    // a DB segment (gets a UUID = becomes voteable) and persists with that identity.
+    // Await the persist before replying so the popup's follow-up render reads it fresh.
+    const seg = lastRawSegments.find((s) => Math.abs(s.start - msg.start) < 1.5);
+    if (seg) {
+      if (msg.uuid) seg.uuid = msg.uuid;
+      seg.contributed = true;
+    }
+    saveEditedSegments().then(() => sendResponse({ ok: !!seg })); // rewrites seg:<id> + lastResult
+    return true; // async response
+  } else if (msg?.type === "dismissSegment" && typeof msg.start === "number") {
+    // User marked a model segment as a false positive: drop it from skipping now and
+    // for good, and keep a light record for future model improvement.
+    const i = lastRawSegments.findIndex((s) => Math.abs(s.start - msg.start) < 1.5);
+    if (i === -1) { sendResponse({ ok: false }); return; }
+    const [removed] = lastRawSegments.splice(i, 1);
+    controller?.setSegments(filterSegments(lastRawSegments, settings));
+    logFalsePositive(currentVideoId, removed);
+    saveEditedSegments().then(() => sendResponse({ ok: true }));
+    return true; // async response
   }
 });
 

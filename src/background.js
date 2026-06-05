@@ -276,8 +276,84 @@ async function fetchSponsorBlock(videoId, signal) {
       end: s.segment[1],
       category: SB_CATEGORIES.includes(s.category) ? s.category : "sponsor",
       confidence: 1, // human-verified
+      uuid: s.UUID, // identifies this exact segment so the user can vote on it
+      locked: s.locked === 1, // moderator-locked: votes won't change it
     }))
     .sort((a, b) => a.start - b.start);
+}
+
+// --------------------------------------------------------------------------- //
+// SponsorBlock contribution — voting (Phase 1) + submitting model finds (Phase 3)
+// --------------------------------------------------------------------------- //
+const SB_VOTE_API = "https://sponsor.ajay.app/api/voteOnSponsorTime";
+// Identify our extension as the submission source so SponsorBlock can see (and
+// evaluate) model-origin contributions rather than them looking like manual ones.
+const SB_USER_AGENT = `sponsor_skip/${chrome.runtime.getManifest().version}`;
+
+// A private, locally-stored SponsorBlock identity, generated lazily on the first
+// vote so users who never contribute never get one. SponsorBlock derives the public
+// ID as sha256(this); we only ever send the private value and never display it.
+async function getOrCreateUserID() {
+  const { sbUserID } = await chrome.storage.local.get("sbUserID");
+  if (sbUserID) return sbUserID;
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  const id = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join(""); // 64 hex chars
+  await chrome.storage.local.set({ sbUserID: id });
+  return id;
+}
+
+// Up/down vote an existing SponsorBlock segment by UUID. type: 1 = up, 0 = down.
+async function voteSponsorBlock(uuid, type) {
+  const userID = await getOrCreateUserID();
+  const params = new URLSearchParams({ UUID: uuid, userID, type: String(type) });
+  const res = await fetch(`${SB_VOTE_API}?${params}`, { method: "POST" });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    // 403 is the common "vote rejected" (e.g. segment locked / rate limited).
+    throw new Error(`${res.status}${body ? `: ${body.slice(0, 120)}` : ""}`);
+  }
+}
+
+// Submit a (user-confirmed) model segment to SponsorBlock's public database. The
+// popup gates this behind an explicit confirm, so by here the user has vouched for
+// the boundaries. We still dedup against what's already on SponsorBlock to avoid
+// polluting it with near-duplicates. Returns the new segment's UUID when the API
+// gives us one. Throws a readable message on rejection (duplicate / rate-limit / …).
+async function submitSponsorBlock(videoId, segment) {
+  const start = Number(segment.start);
+  const end = Number(segment.end);
+  if (!(end > start)) throw new Error("Invalid segment bounds.");
+
+  // Dedup: refuse if an existing SponsorBlock segment meaningfully overlaps this one.
+  let existing = [];
+  try { existing = await fetchSponsorBlock(videoId, null); } catch { /* network — let server dedup */ }
+  const dupThreshold = Math.min(2, (end - start) * 0.3); // >2s OR >30% overlap = duplicate
+  const overlaps = existing.some((s) => Math.min(s.end, end) - Math.max(s.start, start) > dupThreshold);
+  if (overlaps) throw new Error("A similar segment is already on SponsorBlock.");
+
+  const userID = await getOrCreateUserID();
+  const res = await fetch(SB_API, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      videoID: videoId,
+      userID,
+      userAgent: SB_USER_AGENT,
+      segments: [{ segment: [start, end], category: segment.category || "sponsor", actionType: "skip" }],
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`${res.status}${body ? `: ${body.slice(0, 160)}` : ""}`);
+  }
+  // Success: pull the new UUID out of the response if present (shape has varied).
+  let uuid = null;
+  try {
+    const out = await res.json();
+    const arr = Array.isArray(out) ? out : out?.segments;
+    uuid = arr?.[0]?.UUID || arr?.[0]?.uuid || null;
+  } catch { /* some deployments return an empty body on 200 */ }
+  return { uuid };
 }
 
 // --------------------------------------------------------------------------- //
@@ -480,6 +556,34 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       }
     })();
     return true;
+  }
+
+  // Cast an up/down vote on a SponsorBlock segment (from the popup's segment list).
+  if (msg?.type === "sbVote") {
+    (async () => {
+      try {
+        await voteSponsorBlock(msg.uuid, msg.voteType);
+        sendResponse({ ok: true });
+      } catch (err) {
+        console.warn("[sponsor_skip:bg] SponsorBlock vote failed:", err);
+        sendResponse({ ok: false, error: String(err?.message || err) });
+      }
+    })();
+    return true; // async response
+  }
+
+  // Submit a user-confirmed model segment to SponsorBlock (Phase 3).
+  if (msg?.type === "sbSubmit") {
+    (async () => {
+      try {
+        const { uuid } = await submitSponsorBlock(msg.videoId, msg.segment);
+        sendResponse({ ok: true, uuid });
+      } catch (err) {
+        console.warn("[sponsor_skip:bg] SponsorBlock submit failed:", err);
+        sendResponse({ ok: false, error: String(err?.message || err) });
+      }
+    })();
+    return true; // async response
   }
 
   if (msg?.type !== "detect") return;

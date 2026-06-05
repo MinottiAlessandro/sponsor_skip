@@ -114,12 +114,39 @@ a:hover { text-decoration: underline; }
 }
 .seg:hover { background: var(--surface); }
 .seg .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); flex: none; }
+/* SponsorBlock vote buttons (left of each DB-sourced segment). Muted until hovered
+   or cast, so they're available but don't shout over the segment list. */
+.seg .votes { display: inline-flex; gap: 1px; flex: none; }
+.vote {
+  appearance: none; border: 0; background: none; cursor: pointer;
+  font-size: 12px; line-height: 1; padding: 2px 3px; border-radius: 6px;
+  opacity: .5; filter: grayscale(1); transition: opacity .1s, filter .1s, background .1s;
+}
+.vote:hover { opacity: 1; filter: grayscale(0); background: var(--surface-2); }
+.vote.cast { opacity: 1; filter: grayscale(0); }
+.vote:disabled { cursor: default; opacity: .3; }
+/* ✓ badge on a segment that's on SponsorBlock (DB-sourced or just contributed) */
+.seg .votes .shared { display: inline-flex; align-items: center; color: #2ba640;
+  font-weight: 800; font-size: 11px; padding: 0 2px; }
 .seg .cat { font-weight: 600; text-transform: capitalize; }
 .seg .time { margin-left: auto; color: var(--muted); font-variant-numeric: tabular-nums; }
 .via { color: var(--muted); font-size: 11px; margin: 2px 0 8px; }
 .via b { color: var(--text); font-weight: 600; }
 .via .dev { display: inline-block; padding: 0 5px; border: 1px solid var(--border); border-radius: 6px;
   font-size: 9px; font-weight: 700; letter-spacing: .3px; color: var(--muted); vertical-align: 1px; }
+
+/* "Add to SponsorBlock?" confirm card — the human-in-the-loop checkpoint before a
+   model segment is submitted to the public database. */
+.confirm {
+  margin-top: 10px; padding: 10px 11px; border-radius: 9px;
+  border: 1px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.confirm .ctitle { font-weight: 700; margin-bottom: 3px; }
+.confirm .cbody { font-weight: 600; font-variant-numeric: tabular-nums; margin-bottom: 6px; }
+.confirm .cnote { margin: 0 0 9px; font-size: 10.5px; line-height: 1.4; color: var(--muted); }
+.confirm .cbtns { display: flex; gap: 8px; }
+.confirm .cbtns .btn { flex: 1; }
 
 /* Ko-fi support note — Ko-fi coral so it stands out from the yellow theme, but kept
    small, static, and pinned to the bottom of the Status tab so it's easy to ignore. */

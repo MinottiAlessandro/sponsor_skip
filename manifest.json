@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "sponsor_skip — in-video sponsor skipper",
-  "version": "0.4.5",
+  "version": "0.5.0",
   "description": "Detects and skips in-video creator-read sponsor segments on YouTube using an on-device multilingual model.",
   "permissions": [
     "storage",
