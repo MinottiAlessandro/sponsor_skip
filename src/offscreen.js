@@ -1,111 +1,86 @@
-// Offscreen detector: loads the fine-tuned token classifier via Transformers.js
-// (ONNX Runtime Web, all offline/bundled) and runs sliding-window detection over
-// the transcript cues. Lives in an offscreen document because a service worker
-// can't keep a 129 MB model resident across its short lifecycle.
+// Offscreen relay: owns the detector Web Worker and forwards detect requests to it.
 //
-// IMPORTANT: the message listener is registered synchronously and Transformers.js
-// is pulled in via a *dynamic* import inside load(). If a static top-level import
-// throws, the whole module dies before addListener runs and the background just
-// sees "Receiving end does not exist" with no clue why. This way the listener
-// always exists and any load failure is reported back as a real error.
-
-import { detectLocal } from "./local_detector.js"; // no deps; safe to import statically
+// The model used to load and run inference directly here, but the offscreen
+// document shares its renderer thread with the popup, so inference froze the popup
+// (laggy / sometimes un-openable) during analysis. The heavy work now lives in
+// src/detector.worker.js on its own thread; this document just (1) creates the
+// worker, (2) hands it the base URLs it needs (chrome.* isn't available inside a
+// worker), and (3) relays background<->worker messages.
+//
+// The message listener is registered synchronously so the background never sees
+// "Receiving end does not exist" for a reason it can't diagnose; any failure is
+// reported back as a real error instead.
 
 console.log("[sponsor_skip:offscreen] script loaded");
 
-// Keyed by model id + device so switching either (advanced settings) reloads. The
-// bundled model is id "model" (loaded from the extension); any other id is treated
-// as a remote/HuggingFace model (must be a Transformers.js-compatible ONNX repo).
-const BUNDLED = "model";
-let loaded = { key: null, promise: null };
-// Once WebGPU fails to bring up the model, stop trying it for the rest of this
-// offscreen session and stay on CPU (reload the extension to retry).
-let webgpuBroken = false;
+let worker = null;
+let seq = 0;
+const pending = new Map(); // request id -> resolver
 
-function load(modelId, device) {
-  modelId = modelId || BUNDLED;
-  const key = `${modelId}@${device}`;
-  if (loaded.key !== key) {
-    loaded = {
-      key,
-      promise: (async () => {
-        console.log(`[sponsor_skip:offscreen] importing transformers.js… (model: ${modelId}, device: ${device})`);
-        const { env, AutoTokenizer, AutoModelForTokenClassification, Tensor } = await import(
-          "../vendor/transformers.bundle.mjs"
-        );
-        const bundled = modelId === BUNDLED;
-        env.allowRemoteModels = !bundled; // custom model -> fetch from HF/URL
-        env.allowLocalModels = true;
-        // The Cache API rejects chrome-extension:// URLs, so don't try to cache the
-        // bundled model (it's already local). Remote custom models can still cache.
-        env.useBrowserCache = !bundled;
-        env.localModelPath = chrome.runtime.getURL(""); // bundled model id = "model"
-        // WebGPU still loads its kernels from the JSEP wasm in vendor/, so wasmPaths
-        // matters for both devices.
-        env.backends.onnx.wasm.wasmPaths = chrome.runtime.getURL("vendor/");
-        env.backends.onnx.wasm.numThreads = 1;
-        env.backends.onnx.wasm.proxy = false;
-        console.log("[sponsor_skip:offscreen] loading tokenizer…");
-        const tokenizer = await AutoTokenizer.from_pretrained(modelId);
-        console.log(`[sponsor_skip:offscreen] tokenizer ok; loading model (${device}/q8)…`);
-        const model = await AutoModelForTokenClassification.from_pretrained(modelId, {
-          dtype: "q8",
-          device,
-        });
-        console.log(`[sponsor_skip:offscreen] model ready (device: ${device})`);
-        return { tokenizer, model, Tensor, device };
-      })().catch((err) => {
-        loaded = { key: null, promise: null }; // allow a retry / different model or device
-        throw err;
-      }),
-    };
-  }
-  return loaded.promise;
+function failAllPending(error) {
+  for (const [, resolve] of pending) resolve({ ok: false, error });
+  pending.clear();
 }
 
-// Honor "webgpu" only when the browser exposes WebGPU and it hasn't already failed
-// this session; otherwise CPU (wasm). The model load is the final validation — if
-// WebGPU can't actually run the model, the caller catches it and retries on CPU.
-function chooseDevice(requested) {
-  if (requested === "webgpu" && !webgpuBroken && typeof navigator !== "undefined" && navigator.gpu) {
-    return "webgpu";
-  }
-  return "wasm";
+function ensureWorker() {
+  if (worker) return worker;
+  worker = new Worker(chrome.runtime.getURL("src/detector.worker.js"), { type: "module" });
+  worker.onmessage = (e) => {
+    const { id, ...rest } = e.data || {};
+    const resolve = pending.get(id);
+    if (resolve) {
+      pending.delete(id);
+      resolve(rest);
+    }
+  };
+  worker.onerror = (e) => {
+    console.error("[sponsor_skip:offscreen] worker error", e.message || e);
+    // The worker is likely dead — fail in-flight requests and rebuild on next use.
+    failAllPending(String(e.message || "detector worker crashed"));
+    try {
+      worker.terminate();
+    } catch {}
+    worker = null;
+  };
+  // chrome.* isn't available inside the worker, so pass it the resolved base URLs.
+  // Ordered delivery guarantees this init lands before any detect request.
+  worker.postMessage({
+    type: "init",
+    paths: { local: chrome.runtime.getURL(""), wasm: chrome.runtime.getURL("vendor/") },
+  });
+  return worker;
+}
+
+function callWorker(payload) {
+  return new Promise((resolve) => {
+    const id = ++seq;
+    pending.set(id, resolve);
+    ensureWorker().postMessage({ id, ...payload });
+  });
 }
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.target !== "offscreen-sponsorskip") return;
   if (msg.type === "localDetect") {
-    (async () => {
-      const run = async (device) => {
-        const { tokenizer, model, Tensor } = await load(msg.model, device);
-        console.log(`[sponsor_skip:offscreen] detecting over ${msg.cues?.length || 0} cues (device: ${device})…`);
-        const t0 = performance.now(); // inference only — the model load above is one-time
-        const segments = await detectLocal(msg.cues, { tokenizer, model, Tensor }, msg.opts || {});
-        return { segments, ms: Math.round(performance.now() - t0) };
-      };
-      try {
-        let device = chooseDevice(msg.device);
-        let out;
-        try {
-          out = await run(device);
-        } catch (err) {
-          // Any WebGPU failure (load OR inference — e.g. an op the int8 model needs
-          // isn't supported) downgrades to CPU for this and future requests.
-          if (device === "webgpu") {
-            console.warn("[sponsor_skip:offscreen] WebGPU failed — falling back to CPU (wasm)", err);
-            webgpuBroken = true;
-            device = "wasm";
-            out = await run("wasm");
-          } else throw err;
+    console.log(`[sponsor_skip:offscreen] detecting over ${msg.cues?.length || 0} cues…`);
+    callWorker({
+      type: "detect",
+      model: msg.model,
+      device: msg.device,
+      cues: msg.cues,
+      opts: msg.opts || {},
+    })
+      .then((r) => {
+        if (r.ok) {
+          console.log(
+            `[sponsor_skip:offscreen] done: ${r.segments.length} segment(s) (device: ${r.device}, ${r.ms}ms)`
+          );
+        } else {
+          console.error("[sponsor_skip:offscreen] detect failed", r.error);
         }
-        console.log(`[sponsor_skip:offscreen] done: ${out.segments.length} segment(s) (device: ${device}, ${out.ms}ms)`);
-        sendResponse({ ok: true, segments: out.segments, device, ms: out.ms });
-      } catch (err) {
-        console.error("[sponsor_skip:offscreen] detect failed", err);
-        sendResponse({ ok: false, error: String(err?.stack || err) });
-      }
-    })();
+        sendResponse(r);
+      })
+      .catch((err) => sendResponse({ ok: false, error: String(err?.stack || err) }));
     return true; // async response
   }
 });

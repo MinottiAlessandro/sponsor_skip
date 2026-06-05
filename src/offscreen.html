@@ -5,13 +5,15 @@
     <title>sponsor_skip offscreen detector</title>
   </head>
   <body>
-    <!-- Hidden offscreen document: hosts the Transformers.js model and runs
-         inference. Service workers can't hold a 129 MB model in memory across
-         their short lifecycle, so detection lives here. -->
+    <!-- Hidden offscreen document. Service workers can't hold a 129 MB model in
+         memory across their short lifecycle, so detection lives in an extension
+         page. To keep this document's thread (shared with the popup) free, the model
+         itself runs in src/detector.worker.js on its own thread; offscreen.js just
+         owns that worker and relays background<->worker messages. -->
     <!-- ORT is bundled into vendor/transformers.bundle.mjs (esbuild). Under MV3 CSP
          extensions have no bundler or import-map, so Transformers.js's bare ORT
          imports (e.g. "onnxruntime-web/webgpu") are resolved at build time into that
-         single module, which offscreen.js then dynamically imports. -->
+         single module, which the worker dynamically imports. -->
     <script type="module" src="offscreen.js"></script>
   </body>
 </html>
