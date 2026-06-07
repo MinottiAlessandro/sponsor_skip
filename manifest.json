@@ -1,12 +1,9 @@
 {
   "manifest_version": 3,
   "name": "sponsor_skip — in-video sponsor skipper",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "description": "Detects and skips in-video creator-read sponsor segments on YouTube using an on-device multilingual model.",
-  "permissions": [
-    "storage",
-    "offscreen"
-  ],
+  "permissions": ["storage", "offscreen"],
   "content_security_policy": {
     "extension_pages": "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'"
   },
@@ -26,27 +23,16 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://www.youtube.com/*"
-      ],
-      "js": [
-        "src/defaults.js",
-        "src/content.js"
-      ],
-      "css": [
-        "src/ui.css"
-      ],
+      "matches": ["https://www.youtube.com/*"],
+      "js": ["src/defaults.js", "src/content.js"],
+      "css": ["src/ui.css"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": [
-        "src/inject.js"
-      ],
-      "matches": [
-        "https://www.youtube.com/*"
-      ]
+      "resources": ["src/inject.js"],
+      "matches": ["https://www.youtube.com/*"]
     }
   ],
   "icons": {

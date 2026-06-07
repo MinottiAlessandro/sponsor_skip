@@ -73,20 +73,30 @@ async function bundledCatalog() {
   return _bundledCatalog;
 }
 
-// Always keep a usable "default" entry: prefer a remote one (lets us eventually move
-// the default to an HF download), else fall back to the bundled built-in default.
-async function mergeCatalog(remote) {
+// The built-in "default" ships *inside* the extension, so its metadata (size,
+// version, languages) is authoritative from the bundled catalog — a remote/cached
+// catalog must never mask the model the user actually has installed. The remote
+// catalog only contributes the *other* (downloadable) models. If we later move the
+// default off-bundle, just drop it from models/catalog.json and the remote default
+// flows through untouched.
+async function withBundledDefault(cat) {
   const bundled = await bundledCatalog();
-  const remoteModels = remote?.models || [];
-  const hasDefault = remoteModels.some((m) => m.id === "default");
   const def = bundled.models.find((m) => m.id === "default");
-  const models = hasDefault || !def ? remoteModels : [def, ...remoteModels.filter((m) => m.id !== "default")];
-  return { schemaVersion: remote?.schemaVersion || 1, models };
+  if (!def) return cat; // no bundled default -> honor whatever the catalog has
+  const models = [def, ...(cat?.models || []).filter((m) => m.id !== "default")];
+  return { schemaVersion: cat?.schemaVersion || 1, models };
+}
+
+async function mergeCatalog(remote) {
+  return withBundledDefault({ schemaVersion: remote?.schemaVersion || 1, models: remote?.models || [] });
 }
 
 async function loadCatalog(force) {
   const { catalog, catalogAt } = await chrome.storage.local.get(["catalog", "catalogAt"]);
-  if (!force && catalog && catalogAt && Date.now() - catalogAt < CATALOG_TTL_MS) return catalog;
+  // Always overlay the bundled default so a cached catalog can't keep showing a
+  // stale built-in size/version after the bundled model is swapped.
+  if (!force && catalog && catalogAt && Date.now() - catalogAt < CATALOG_TTL_MS)
+    return withBundledDefault(catalog);
   try {
     const res = await fetch(CATALOG_REMOTE_URL, { cache: "no-store" }); // needs HF host perm
     if (res.ok) {
@@ -95,7 +105,7 @@ async function loadCatalog(force) {
       return merged;
     }
   } catch { /* offline / not created yet / no permission — fall back below */ }
-  if (catalog) return catalog; // last good
+  if (catalog) return withBundledDefault(catalog); // last good
   // Persist the bundled fallback so we don't retry the (blocked) remote fetch on
   // every call; the user's "Refresh" forces a fresh attempt once HF is reachable.
   const bundled = await bundledCatalog();

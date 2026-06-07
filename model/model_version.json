@@ -1,6 +1,6 @@
 {
-  "version": "2026.06.04",
-  "source": "spike/model_prod",
+  "version": "2026.06.07",
+  "source": "ModernBERT token-classifier (mmBERT-small · 22L/384h · vocab 256k)",
   "labels": "O,sponsor,selfpromo,interaction",
-  "installed": "2026-06-04T19:15:38+02:00"
+  "installed": "2026-06-07T18:46:50+02:00"
 }
