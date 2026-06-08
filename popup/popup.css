@@ -173,8 +173,17 @@ a:hover { text-decoration: underline; }
   font-size: 9px; font-weight: 700; letter-spacing: .3px; color: var(--muted); vertical-align: 1px; }
 
 /* Manually add a segment at the playhead (then drag its edges on the video) */
+.addsegrow { display: flex; gap: 6px; margin-top: 8px; }
+.addsegcat {
+  appearance: none; cursor: pointer; flex: 0 0 auto; max-width: 42%;
+  padding: 7px 24px 7px 9px; font: inherit; font-weight: 600; font-size: 12px;
+  color: var(--text); background: var(--surface-2);
+  border: 1px solid var(--border); border-radius: 8px;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'><path fill='%23888' d='M2 4l4 4 4-4z'/></svg>");
+  background-repeat: no-repeat; background-position: right 7px center;
+}
 .addseg {
-  appearance: none; cursor: pointer; width: 100%; margin-top: 8px;
+  appearance: none; cursor: pointer; flex: 1 1 auto;
   padding: 7px 10px; font: inherit; font-weight: 600; font-size: 12px;
   color: var(--muted); background: none;
   border: 1px dashed var(--border); border-radius: 8px;

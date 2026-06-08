@@ -163,6 +163,7 @@ const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(
 const fmtMs = (ms) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
 const SOURCE_LABEL = { sponsorblock: "SponsorBlock DB", local: "on-device model", llm: "local LLM" };
 const DEVICE_LABEL = { wasm: "CPU", webgpu: "GPU" }; // backend the on-device model used
+const CATEGORY_LABELS = { sponsor: "Sponsor", selfpromo: "Self-promotion", interaction: "Interaction reminder" };
 
 async function renderStatus() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -182,13 +183,13 @@ async function renderStatus() {
   const r = $("result");
   if (!data) {
     r.className = "muted"; r.textContent = "Open a YouTube video to detect sponsors.";
-    $("addSeg").hidden = true;
+    $("addSegRow").hidden = true;
     return;
   }
 
   if (popupVideoId !== data.videoId) cancelSubmit(); // close a stale confirm on video change
   popupVideoId = data.videoId;
-  $("addSeg").hidden = false; // a video is open → allow manual segment adding
+  $("addSegRow").hidden = false; // a video is open → allow manual segment adding
 
   // A just-finished detection writes lastResult to storage (which wakes this popup)
   // a beat BEFORE the content script has received the same result — so mid-handoff
@@ -294,8 +295,9 @@ async function castVote(seg, type, btn) {
 // video first); only an explicit Submit posts it to the public DB.
 let pendingSubmit = null;
 function startSubmit(seg) {
-  pendingSubmit = { start: seg.start, end: seg.end, category: seg.category || "sponsor" };
-  $("cbody").textContent = `Sponsor · ${fmt(seg.start)} – ${fmt(seg.end)}`;
+  const cat = seg.category || "sponsor";
+  pendingSubmit = { start: seg.start, end: seg.end, category: cat };
+  $("cbody").textContent = `${CATEGORY_LABELS[cat] || cat} · ${fmt(seg.start)} – ${fmt(seg.end)}`;
   $("submitConfirm").hidden = false;
 }
 function cancelSubmit() {
@@ -345,9 +347,10 @@ async function dismissSegment(seg) {
 async function addSegmentAtPlayhead() {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-    const r = await chrome.tabs.sendMessage(tab.id, { type: "addSegment" });
+    const category = $("addSegCat")?.value || "sponsor";
+    const r = await chrome.tabs.sendMessage(tab.id, { type: "addSegment", category });
     if (!r?.ok) throw new Error(r?.error || "couldn't add");
-    toast("Segment added — drag its edges on the video to set the exact bounds");
+    toast(`${CATEGORY_LABELS[category] || category} segment added — drag its edges on the video to set the exact bounds`);
     renderStatus();
   } catch {
     toast("Couldn't add a segment here");

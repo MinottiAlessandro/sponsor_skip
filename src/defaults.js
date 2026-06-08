@@ -27,7 +27,10 @@ const DEFAULTS = {
 // always show exactly the same set.
 function filterSegments(segments, settings) {
   return (segments || [])
-    .filter((s) => settings.categories[s.category] !== false)
+    // Manual segments are user-authored (they picked the spot AND the reason), so
+    // they always apply regardless of the per-category skip toggles; the toggles
+    // govern only the automatic sources (the model + the SponsorBlock database).
+    .filter((s) => s.manual || settings.categories[s.category] !== false)
     .filter((s) => (s.confidence ?? 1) >= settings.minConfidence)
     .filter((s) => s.end > s.start)
     .sort((a, b) => a.start - b.start);

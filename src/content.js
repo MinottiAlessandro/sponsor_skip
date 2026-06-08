@@ -927,8 +927,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     if (!v || !dur || !isFinite(dur)) { sendResponse({ ok: false, error: "no video" }); return; }
     const start = Math.max(0, Math.min(v.currentTime, dur - 2));
     const end = Math.min(dur, start + 20); // sensible default span; adjust by dragging
+    // The user picks the reason in the popup; default to sponsor and ignore anything
+    // outside the three categories the model/filter/SponsorBlock submit understand.
+    const category = ["sponsor", "selfpromo", "interaction"].includes(msg.category) ? msg.category : "sponsor";
     // manual + edited: user-authored, so treat as verified (and submittable to SponsorBlock).
-    const seg = { start, end, category: "sponsor", confidence: 1, manual: true, edited: true };
+    const seg = { start, end, category, confidence: 1, manual: true, edited: true };
     lastRawSegments.push(seg);
     const filtered = filterSegments(lastRawSegments, settings);
     if (controller) controller.setSegments(filtered);
