@@ -16,13 +16,15 @@ let lastDevice = null; // backend the on-device model ran on ("wasm"/"webgpu"), 
 let lastMs = null; // on-device model inference time in ms, if local
 let lastRawSegments = []; // all detected segments (every category), pre-filter
 
-// Friendly label for where a result came from (shown in the pill + popup).
+// Friendly (localized) label for where a result came from (shown in the pill).
 function sourceLabel(source) {
-  return (
-    { sponsorblock: "SponsorBlock DB", local: "on-device model", llm: "local LLM" }[
-      source
-    ] || source
-  );
+  const key = { sponsorblock: "src_sponsorblock", local: "src_local", llm: "src_llm" }[source];
+  return key ? t(key) : source;
+}
+// Localized category name for the skip button.
+function categoryLabel(category) {
+  const key = { sponsor: "catname_sponsor", selfpromo: "catname_selfpromo", interaction: "catname_interaction" }[category];
+  return key ? t(key) : category;
 }
 let detectionAbort = null; // AbortController for the in-flight transcript fetch
 let debounceTimer = null;
@@ -34,11 +36,13 @@ const DETECT_DEBOUNCE_MS = 700; // ignore videos the user flies past
 async function loadSettings() {
   const stored = await chrome.storage.local.get("settings");
   settings = { ...DEFAULTS, ...(stored.settings || {}) };
+  I18N.setLang(settings.language);
 }
 
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes.settings) {
     settings = { ...DEFAULTS, ...changes.settings.newValue };
+    I18N.setLang(settings.language); // pick up a language change for the next skip UI
     controller?.updateSettings(settings);
     // Re-apply the category/confidence filter live so toggling e.g. "self-promo"
     // updates the timeline markers without re-analyzing or reloading.
@@ -340,7 +344,7 @@ async function runDetection(msg) {
   detectionAbort = new AbortController();
   const signal = detectionAbort.signal;
   const stale = () => signal.aborted || msg.videoId !== currentVideoId;
-  setStatus(true, "Analyzing sponsors…");
+  setStatus(true, t("analyzing"));
 
   // Phase 1: ask the background for cache + SponsorBlock first — no transcript
   // fetch needed unless this falls through to on-device detection.
@@ -410,7 +414,7 @@ async function runDetection(msg) {
   if (!resp || resp.aborted) return;
   if (resp.error) {
     console.warn("[sponsor_skip] detection error:", resp.error);
-    setStatus(false, "Detection failed", 8000, true);
+    setStatus(false, t("detection_failed"), 8000, true);
     return;
   }
 
@@ -425,7 +429,7 @@ async function runDetection(msg) {
   console.log(`[sponsor_skip] ${segments.length} segment(s) for ${msg.videoId} (${lastSource || "?"}${lastDevice ? "/" + lastDevice : ""}${lastMs != null ? ", " + lastMs + "ms" : ""})`, segments);
   const n = segments.length;
   const via = n && lastSource ? ` · ${sourceLabel(lastSource)}` : "";
-  setStatus(false, n ? `${n} sponsor${n > 1 ? "s" : ""} found${via}` : "No sponsors found", 5000);
+  setStatus(false, n ? `${tn(n, "sponsors_found_one", "sponsors_found_many")}${via}` : t("no_sponsors"), 5000);
 
   const video = document.querySelector("video.html5-main-video, video");
   if (!video) return;
@@ -514,7 +518,7 @@ async function maybeShowEditHint(controller) {
     const { ssHandleHintSeen } = await chrome.storage.local.get("ssHandleHintSeen");
     if (ssHandleHintSeen) return;
     await chrome.storage.local.set({ ssHandleHintSeen: true });
-    controller.toast("Tip: drag a yellow edge on the bar to fix a sponsor's start/end");
+    controller.toast(t("tip_drag"));
   } catch { /* ignore */ }
 }
 
@@ -660,14 +664,14 @@ class SkipController {
     }
     this.countdown.seg = seg;
     this.countdown.el.innerHTML =
-      `Auto-skip in ${Math.max(0, remaining)}s <span class="sponsorskip-cancel">✕ cancel</span>`;
+      `${t("auto_skip_in", { n: Math.max(0, remaining) })} <span class="sponsorskip-cancel">${t("cancel")}</span>`;
     this.positionBottomControls();
   }
 
   doSkip(seg) {
     this.cancelCountdown();
     this.video.currentTime = seg.end;
-    this.toast("Skipped sponsor");
+    this.toast(t("skipped"));
   }
 
   cancelCountdown() {
@@ -777,7 +781,7 @@ class SkipController {
         seg.edited = true; // user-verified boundary (matters for Phase 3 submission)
         this.activeSeg = null; // re-evaluate the skip button/countdown with new bounds
         saveEditedSegments();
-        this.toast(`${edge === "start" ? "Start" : "End"} → ${fmtTime(seg[edge])}`);
+        this.toast(`${edge === "start" ? t("drag_start") : t("drag_end")} → ${fmtTime(seg[edge])}`);
       } else {
         seg[edge] = orig; // undo a sub-threshold jiggle from a near-click
       }
@@ -830,7 +834,7 @@ class SkipController {
   updateButtonLabel(seg) {
     if (!this.btn) return;
     const secs = Math.max(1, Math.round(seg.end - this.video.currentTime));
-    this.btn.textContent = `Skip ${seg.category} (${secs}s) ▶`;
+    this.btn.textContent = t("skip_btn", { cat: categoryLabel(seg.category), secs });
   }
 
   showButton(seg) {

@@ -33,6 +33,7 @@ function applyControls() {
   $("model").value = settings.model;
   $("maxSegmentSeconds").value = settings.maxSegmentSeconds;
   $("theme").value = settings.theme;
+  $("language").value = settings.language;
   syncMode();
   syncDetectorRows();
   syncCategoryRows();
@@ -92,6 +93,17 @@ function setMode(m) {
   persist();
 }
 
+// Fill every translatable node from the current language. Static text uses
+// data-i18n; attributes use data-i18n-title / -placeholder / -aria. Re-run after a
+// language change to retranslate the open popup in place.
+function applyI18n() {
+  document.documentElement.lang = I18N.lang;
+  document.querySelectorAll("[data-i18n]").forEach((el) => { el.textContent = t(el.dataset.i18n); });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => { el.title = t(el.dataset.i18nTitle); });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => { el.placeholder = t(el.dataset.i18nPlaceholder); });
+  document.querySelectorAll("[data-i18n-aria]").forEach((el) => { el.setAttribute("aria-label", t(el.dataset.i18nAria)); });
+}
+
 function bind() {
   document.querySelectorAll(".modes .m").forEach((b) =>
     b.addEventListener("click", () => setMode(b.dataset.mode))
@@ -111,13 +123,13 @@ function bind() {
     settings.detector = $("detector").value; syncDetectorRows(); persist();
     if (settings.detector === "ollama" && !(await ensureOptionalPermissions())) {
       settings.detector = "local"; $("detector").value = "local"; syncDetectorRows(); persist();
-      toast("Ollama needs local-network access — not granted");
+      toast(t("ollama_not_granted"));
     }
   });
   on("customModel", async () => {
     settings.customModel = $("customModel").value.trim(); persist();
     if (settings.customModel && !(await ensureOptionalPermissions())) {
-      toast("Custom models need Hugging Face access — not granted");
+      toast(t("custom_not_granted"));
     }
   });
   on("device", () => { settings.device = $("device").value; persist(); });
@@ -128,6 +140,13 @@ function bind() {
   on("model", () => { settings.model = $("model").value.trim() || DEFAULTS.model; persist(); });
   on("maxSegmentSeconds", () => { settings.maxSegmentSeconds = parseInt($("maxSegmentSeconds").value, 10) || DEFAULTS.maxSegmentSeconds; persist(); });
   on("theme", () => { settings.theme = $("theme").value; persist(); });
+  on("language", () => {
+    settings.language = $("language").value; persist();
+    I18N.setLang(settings.language);
+    applyI18n();    // retranslate the static UI in place…
+    renderStatus(); // …and the dynamic panels (status list, model labels)
+    renderModels();
+  });
 
   // Live-update the Status panel when a detection finishes or errors while the
   // popup is open (no need to reopen it).
@@ -161,9 +180,14 @@ function bind() {
 // ---- status panel (segments + error) ------------------------------------ //
 const fmt = (t) => `${Math.floor(t / 60)}:${String(Math.floor(t % 60)).padStart(2, "0")}`;
 const fmtMs = (ms) => (ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`);
-const SOURCE_LABEL = { sponsorblock: "SponsorBlock DB", local: "on-device model", llm: "local LLM" };
-const DEVICE_LABEL = { wasm: "CPU", webgpu: "GPU" }; // backend the on-device model used
-const CATEGORY_LABELS = { sponsor: "Sponsor", selfpromo: "Self-promotion", interaction: "Interaction reminder" };
+// Localized labels (keys resolved through i18n.js at call time, so they follow the
+// current language without rebuilding these maps).
+const SRC_KEY = { sponsorblock: "src_sponsorblock", local: "src_local", llm: "src_llm" };
+const DEV_KEY = { wasm: "dev_wasm", webgpu: "dev_webgpu" }; // backend the on-device model used
+const CAT_KEY = { sponsor: "catname_sponsor", selfpromo: "catname_selfpromo", interaction: "catname_interaction" };
+const sourceLabel = (s) => (SRC_KEY[s] ? t(SRC_KEY[s]) : s);
+const deviceLabel = (d) => (DEV_KEY[d] ? t(DEV_KEY[d]) : d);
+const categoryLabel = (c) => (CAT_KEY[c] ? t(CAT_KEY[c]) : c);
 
 async function renderStatus() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -174,7 +198,7 @@ async function renderStatus() {
   // error banner (only for the video currently open)
   const err = $("error");
   if (lastError && data && lastError.videoId === data.videoId) {
-    $("ereason").textContent = lastError.reason || "Unknown error.";
+    $("ereason").textContent = lastError.reason || t("err_unknown");
     err.hidden = false;
   } else {
     err.hidden = true;
@@ -182,7 +206,7 @@ async function renderStatus() {
 
   const r = $("result");
   if (!data) {
-    r.className = "muted"; r.textContent = "Open a YouTube video to detect sponsors.";
+    r.className = "muted"; r.textContent = t("result_open");
     $("addSegRow").hidden = true;
     return;
   }
@@ -205,23 +229,23 @@ async function renderStatus() {
 
   // Analysis meta (source + backend + time) — built once and shown whether or not any
   // sponsors were found, so the user can always see that (and how) the video was analyzed.
-  const srcLabel = SOURCE_LABEL[result.source] || result.source;
+  const srcLabel = sourceLabel(result.source);
   // Only the on-device model has a backend + timing; show whichever actually ran
   // (after any fallback) and how long inference took.
   const bits = [];
   if (result.source === "local") {
-    if (result.device) bits.push(DEVICE_LABEL[result.device] || result.device);
+    if (result.device) bits.push(deviceLabel(result.device));
     if (result.ms != null) bits.push(fmtMs(result.ms));
   }
   const devChip = bits.length ? ` <span class="dev">${bits.join(" · ")}</span>` : "";
 
   if (!segs.length) {
     if (!err.hidden) { r.className = "muted"; r.textContent = ""; return; } // error banner says it
-    const msg = result.segments?.length ? "No segments match your enabled categories" : "No sponsors found";
+    const msg = result.segments?.length ? t("no_match") : t("no_sponsors");
     // Still surface that the video WAS analyzed (and how), when we have that info.
     if (result.source) {
       r.className = "";
-      r.innerHTML = `<div class="via">${msg} · via <b>${srcLabel}</b>${devChip}</div>`;
+      r.innerHTML = `<div class="via">${msg} · ${t("via")} <b>${srcLabel}</b>${devChip}</div>`;
     } else {
       r.className = "muted";
       r.textContent = msg;
@@ -230,7 +254,7 @@ async function renderStatus() {
   }
 
   r.className = "";
-  const via = result.source ? `<div class="via">${segs.length} segment(s) · via <b>${srcLabel}</b>${devChip}</div>` : "";
+  const via = result.source ? `<div class="via">${tn(segs.length, "seg_count_one", "seg_count_many")} · ${t("via")} <b>${srcLabel}</b>${devChip}</div>` : "";
   r.innerHTML = via + segs.map((s, i) => `<div class="seg" data-i="${i}">${voteCell(s)}` +
     `<span class="cat">${s.category}</span>` +
     `<span class="time">${fmt(s.start)}–${fmt(s.end)}</span></div>`).join("");
@@ -255,7 +279,12 @@ async function renderStatus() {
 //   • SponsorBlock segment (has uuid) → up/down VOTE (Phase 1)
 //   • model segment (no uuid)         → 👍 contribute to SponsorBlock / 👎 dismiss (Phase 3)
 // A contributed segment gains a uuid + a ✓ badge and becomes voteable like any other.
-const castVotes = new Map(); // uuid -> 1 (up) | 0 (down), to keep highlight across re-renders
+// uuid -> 1 (up) | 0 (down). Hydrated from storage on boot and persisted on each
+// vote, so the highlight survives not just re-renders but a popup close/reopen
+// (the popup's JS context — and this Map — is rebuilt every time it opens).
+const castVotes = new Map();
+const persistVotes = () =>
+  chrome.storage.local.set({ sbVotes: Object.fromEntries(castVotes) }).catch(() => {});
 const sharedBadge = `<span class="shared" title="On SponsorBlock">✓</span>`;
 const thumb = (dir, title, cast) =>
   `<button class="vote ${dir}${cast ? " cast" : ""}" title="${title}">${dir === "up" ? "👍" : "👎"}</button>`;
@@ -280,11 +309,12 @@ async function castVote(seg, type, btn) {
     const r = await chrome.runtime.sendMessage({ type: "sbVote", uuid: seg.uuid, voteType: type });
     if (!r?.ok) throw new Error(r?.error || "vote failed");
     castVotes.set(seg.uuid, type);
+    persistVotes();
     group.querySelectorAll(".vote").forEach((b) => b.classList.remove("cast"));
     btn.classList.add("cast");
-    toast(type ? "Upvoted on SponsorBlock — thanks!" : "Downvoted on SponsorBlock");
+    toast(type ? t("vote_up_ok") : t("vote_down_ok"));
   } catch (err) {
-    toast(`Vote failed: ${String(err.message || err)}`);
+    toast(t("vote_failed", { err: String(err.message || err) }));
   } finally {
     group.querySelectorAll(".vote").forEach((b) => (b.disabled = false));
   }
@@ -297,7 +327,7 @@ let pendingSubmit = null;
 function startSubmit(seg) {
   const cat = seg.category || "sponsor";
   pendingSubmit = { start: seg.start, end: seg.end, category: cat };
-  $("cbody").textContent = `${CATEGORY_LABELS[cat] || cat} · ${fmt(seg.start)} – ${fmt(seg.end)}`;
+  $("cbody").textContent = `${categoryLabel(cat)} · ${fmt(seg.start)} – ${fmt(seg.end)}`;
   $("submitConfirm").hidden = false;
 }
 function cancelSubmit() {
@@ -309,7 +339,7 @@ async function submitPending() {
   const seg = pendingSubmit;
   const sub = $("cSubmit"), cancel = $("cCancel");
   sub.disabled = cancel.disabled = true;
-  sub.textContent = "Submitting…";
+  sub.textContent = t("submitting");
   try {
     const r = await chrome.runtime.sendMessage({ type: "sbSubmit", videoId: popupVideoId, segment: seg });
     if (!r?.ok) throw new Error(r?.error || "submit failed");
@@ -319,14 +349,14 @@ async function submitPending() {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       await chrome.tabs.sendMessage(tab.id, { type: "tagContributed", start: seg.start, uuid: r.uuid });
     } catch { /* content script gone — fine */ }
-    toast("Added to SponsorBlock — thanks! 🎉");
+    toast(t("submit_ok"));
     cancelSubmit();
     renderStatus();
   } catch (err) {
-    toast(`Submit failed: ${String(err.message || err)}`);
+    toast(t("submit_failed", { err: String(err.message || err) }));
   } finally {
     sub.disabled = cancel.disabled = false;
-    sub.textContent = "Submit";
+    sub.textContent = t("btn_submit");
   }
 }
 
@@ -335,10 +365,10 @@ async function dismissSegment(seg) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     await chrome.tabs.sendMessage(tab.id, { type: "dismissSegment", start: seg.start });
-    toast("Removed — won't skip this");
+    toast(t("removed"));
     renderStatus();
   } catch {
-    toast("Couldn't remove that segment");
+    toast(t("remove_failed"));
   }
 }
 
@@ -350,10 +380,10 @@ async function addSegmentAtPlayhead() {
     const category = $("addSegCat")?.value || "sponsor";
     const r = await chrome.tabs.sendMessage(tab.id, { type: "addSegment", category });
     if (!r?.ok) throw new Error(r?.error || "couldn't add");
-    toast(`${CATEGORY_LABELS[category] || category} segment added — drag its edges on the video to set the exact bounds`);
+    toast(t("seg_added", { cat: categoryLabel(category) }));
     renderStatus();
   } catch {
-    toast("Couldn't add a segment here");
+    toast(t("seg_add_failed"));
   }
 }
 
@@ -372,30 +402,30 @@ async function renderModels() {
   const dl = data?.downloadState || null;
   const langs = (ls) => (ls || []).map((l) => l.toUpperCase()).join(" ");
   const notice = data?.modelNotice
-    ? `<div class="mnotice">⚠ ${escapeHtml(data.modelNotice)}<button data-action="dismissNotice" title="Dismiss">✕</button></div>`
+    ? `<div class="mnotice">⚠ ${escapeHtml(data.modelNotice)}<button data-action="dismissNotice" title="${t("m_dismiss")}">✕</button></div>`
     : "";
   list.innerHTML = notice + models.map((m) => {
     const downloading = dl && dl.id === m.id && dl.status === "downloading";
     const meta = [m.sizeMB ? `${m.sizeMB} MB` : "", langs(m.languages)].filter(Boolean).join(" · ");
-    const upd = m.updateAvailable ? `<button class="btn sm" data-action="download" data-id="${m.id}">Update</button>` : "";
+    const upd = m.updateAvailable ? `<button class="btn sm" data-action="download" data-id="${m.id}">${t("m_update")}</button>` : "";
     let ctl;
     if (downloading) {
       ctl = `<div class="mprog"><div class="mbar" style="width:${dl.pct || 0}%"></div></div><span class="mpct">${dl.pct || 0}%</span>`;
     } else if (m.active) {
-      ctl = `<span class="mactive">Active</span>${upd}`;
+      ctl = `<span class="mactive">${t("m_active")}</span>${upd}`;
     } else if (m.downloaded) {
-      ctl = `<button class="btn sm accent" data-action="use" data-id="${m.id}">Use</button>${upd}` +
-        (m.builtin ? "" : `<button class="btn sm" data-action="delete" data-id="${m.id}">Delete</button>`);
+      ctl = `<button class="btn sm accent" data-action="use" data-id="${m.id}">${t("m_use")}</button>${upd}` +
+        (m.builtin ? "" : `<button class="btn sm" data-action="delete" data-id="${m.id}">${t("m_delete")}</button>`);
     } else {
-      ctl = `<button class="btn sm" data-action="download" data-id="${m.id}">Download${m.sizeMB ? ` (${m.sizeMB} MB)` : ""}</button>`;
+      ctl = `<button class="btn sm" data-action="download" data-id="${m.id}">${t("m_download")}${m.sizeMB ? ` (${m.sizeMB} MB)` : ""}</button>`;
     }
-    const rec = m.recommended ? `<span class="mbadge">Recommended</span>` : "";
+    const rec = m.recommended ? `<span class="mbadge">${t("m_recommended")}</span>` : "";
     return `<div class="model${m.active ? " on" : ""}" data-id="${m.id}">` +
       `<div class="minfo"><div class="mname">${escapeHtml(m.name)}${rec}</div><div class="mmeta">${escapeHtml(meta)}</div></div>` +
       `<div class="mctl">${ctl}</div></div>`;
-  }).join("") || `<div class="hint">No models available.</div>`;
+  }).join("") || `<div class="hint">${t("m_none")}</div>`;
   const totalMB = models.filter((m) => m.downloaded && !m.builtin).reduce((s, m) => s + (m.sizeMB || 0), 0);
-  $("storageUsed").textContent = totalMB ? `${totalMB} MB of models downloaded` : "";
+  $("storageUsed").textContent = totalMB ? t("storage_used", { mb: totalMB }) : "";
 }
 
 function updateProgressBar(pct) {
@@ -408,14 +438,14 @@ function updateProgressBar(pct) {
 async function useModel(id) {
   settings.modelId = id;
   await persist();
-  toast("Model selected — applies on the next analysis");
+  toast(t("model_selected"));
   renderModels();
 }
 
 async function downloadModelUI(id) {
-  if (!(await requestHF())) { toast("Hugging Face access not granted"); return; }
+  if (!(await requestHF())) { toast(t("hf_not_granted")); return; }
   chrome.runtime.sendMessage({ type: "downloadModel", id })
-    .then((r) => { toast(r?.ok ? "Model downloaded" : `Download failed: ${r?.error || ""}`); renderModels(); })
+    .then((r) => { toast(r?.ok ? t("model_downloaded") : t("download_failed", { err: r?.error || "" })); renderModels(); })
     .catch(() => {});
   setTimeout(renderModels, 60); // pick up the "downloading" state the background just set
 }
@@ -426,13 +456,13 @@ async function deleteModelUI(id) {
     if (!r?.ok) throw new Error(r?.error || "delete failed");
     // If we somehow deleted the active model, fall back to the default.
     if (settings.modelId === id) { settings.modelId = "default"; await persist(); }
-    toast("Model deleted");
-  } catch (err) { toast(`Delete failed: ${String(err.message || err)}`); }
+    toast(t("model_deleted"));
+  } catch (err) { toast(t("delete_failed", { err: String(err.message || err) })); }
   renderModels();
 }
 
 async function refreshModelsUI() {
-  if (!(await requestHF())) { toast("Hugging Face access not granted"); return; }
+  if (!(await requestHF())) { toast(t("hf_not_granted")); return; }
   $("refreshModels").disabled = true;
   try { await chrome.runtime.sendMessage({ type: "refreshCatalog" }); } catch {}
   $("refreshModels").disabled = false;
@@ -443,7 +473,7 @@ async function resetCache() {
   const all = await chrome.storage.local.get(null);
   const keys = Object.keys(all).filter((k) => k.startsWith("seg:") || k.startsWith("src:") || k.startsWith("dev:") || k === "lastResult" || k === "lastError");
   await chrome.storage.local.remove(keys);
-  toast(`Cleared ${keys.filter((k) => k.startsWith("seg:")).length} cached video(s)`);
+  toast(tn(keys.filter((k) => k.startsWith("seg:")).length, "cache_cleared_one", "cache_cleared_many"));
   renderStatus();
 }
 
@@ -461,13 +491,16 @@ function toast(text) {
 // thread, so we must not gate interactivity behind any async/message round-trip).
 bind();
 (async () => {
-  const stored = await chrome.storage.local.get("settings");
+  const stored = await chrome.storage.local.get(["settings", "sbVotes"]);
   settings = { ...DEFAULTS, ...(stored.settings || {}), categories: { ...DEFAULTS.categories, ...(stored.settings?.categories || {}) } };
+  for (const [uuid, type] of Object.entries(stored.sbVotes || {})) castVotes.set(uuid, type);
+  I18N.setLang(settings.language);
+  applyI18n();
   applyControls();
   renderStatus();
   renderModels();
   fetch(chrome.runtime.getURL("model/model_version.json"))
     .then((r) => r.json())
-    .then((m) => { $("modelinfo").textContent = `model v${m.version}`; })
+    .then((m) => { $("modelinfo").textContent = t("model_version", { v: m.version }); })
     .catch(() => { $("modelinfo").textContent = ""; });
 })();

@@ -11,6 +11,7 @@ const DEFAULTS = {
   countdownMode: "grace", // "grace" plays the start; "preroll" skips from the very start
   statusIndicator: "both", // "both" | "page" | "badge" | "off"
   theme: "auto",
+  language: "auto", // UI language: "auto" follows the browser; or "en"/"it"/"es"/"fr"/"de"
   useSponsorBlock: true,
   detector: "local", // "local" = on-device model; "ollama" = local LLM (dev)
   device: "wasm", // on-device model runtime: "wasm" (CPU) | "webgpu" (GPU, experimental)

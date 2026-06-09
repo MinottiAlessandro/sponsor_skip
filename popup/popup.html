@@ -8,53 +8,53 @@
   <body>
     <header class="hd">
       <img class="logo" src="../icons/icon48.png" alt="" />
-      <div class="brand">sponsor_skip<span class="tag">in-video sponsor skipper</span></div>
+      <div class="brand">sponsor_skip<span class="tag" data-i18n="subtitle">in-video sponsor skipper</span></div>
       <span class="ver" id="modelinfo"></span>
     </header>
 
     <nav class="tabs">
-      <button class="tab active" data-tab="status">Status</button>
-      <button class="tab" data-tab="skipping">Skipping</button>
-      <button class="tab" data-tab="detector">Detector</button>
-      <button class="tab" data-tab="look">Look</button>
+      <button class="tab active" data-tab="status" data-i18n="tab_status">Status</button>
+      <button class="tab" data-tab="skipping" data-i18n="tab_skipping">Skipping</button>
+      <button class="tab" data-tab="detector" data-i18n="tab_detector">Detector</button>
+      <button class="tab" data-tab="look" data-i18n="tab_look">Look</button>
     </nav>
 
     <main>
       <!-- ───────────────── STATUS ───────────────── -->
       <section class="panel active" data-panel="status">
         <div class="modes">
-          <button class="m" data-mode="auto">Auto-skip</button>
-          <button class="m" data-mode="button">Button</button>
-          <button class="m" data-mode="off">Off</button>
+          <button class="m" data-mode="auto" data-i18n="mode_auto">Auto-skip</button>
+          <button class="m" data-mode="button" data-i18n="mode_button">Button</button>
+          <button class="m" data-mode="off" data-i18n="mode_off">Off</button>
         </div>
         <div id="error" class="error" hidden>
-          <div class="etitle">⚠ Couldn't analyze this video <span class="caret">▸ details</span></div>
+          <div class="etitle">⚠ <span data-i18n="err_title">Couldn't analyze this video</span> <span class="caret" data-i18n="err_details">▸ details</span></div>
           <div class="ereason" id="ereason"></div>
         </div>
-        <div id="result" class="muted">Open a YouTube video to detect sponsors.</div>
+        <div id="result" class="muted" data-i18n="result_open">Open a YouTube video to detect sponsors.</div>
         <div id="addSegRow" class="addsegrow" hidden>
-          <select id="addSegCat" class="addsegcat" aria-label="Segment reason" title="What is this segment?">
-            <option value="sponsor">Sponsor</option>
-            <option value="selfpromo">Self-promotion</option>
-            <option value="interaction">Interaction reminder</option>
+          <select id="addSegCat" class="addsegcat" data-i18n-aria="addseg_aria" data-i18n-title="addseg_title" aria-label="Segment reason" title="What is this segment?">
+            <option value="sponsor" data-i18n="addseg_cat_sponsor">Sponsor</option>
+            <option value="selfpromo" data-i18n="addseg_cat_selfpromo">Self-promotion</option>
+            <option value="interaction" data-i18n="addseg_cat_interaction">Interaction reminder</option>
           </select>
-          <button id="addSeg" class="addseg" type="button">+ Add segment here</button>
+          <button id="addSeg" class="addseg" type="button" data-i18n="addseg_btn">+ Add segment here</button>
         </div>
         <div id="submitConfirm" class="confirm" hidden>
-          <div class="ctitle">Add to SponsorBlock?</div>
+          <div class="ctitle" data-i18n="confirm_title">Add to SponsorBlock?</div>
           <div class="cbody" id="cbody"></div>
-          <p class="cnote">Shares this segment with the public SponsorBlock database so everyone benefits. Please make sure the start/end are exact first — drag the yellow edges on the video to fine-tune.</p>
+          <p class="cnote" data-i18n="confirm_note">Shares this segment with the public SponsorBlock database so everyone benefits. Please make sure the start/end are exact first — drag the yellow edges on the video to fine-tune.</p>
           <div class="cbtns">
-            <button class="btn" id="cCancel" type="button">Cancel</button>
-            <button class="btn accent" id="cSubmit" type="button">Submit</button>
+            <button class="btn" id="cCancel" type="button" data-i18n="btn_cancel">Cancel</button>
+            <button class="btn accent" id="cSubmit" type="button" data-i18n="btn_submit">Submit</button>
           </div>
         </div>
         <div class="support">
           <a class="kofi" href="https://ko-fi.com/alessandromino" target="_blank" rel="noopener">
             <span class="cup" aria-hidden="true">☕</span>
-            <span>Enjoying it? <b>Support me on Ko-fi</b></span>
+            <span><span data-i18n="kofi_enjoy">Enjoying it?</span> <b data-i18n="kofi_support">Support me on Ko-fi</b></span>
           </a>
-          <a class="gh" href="https://github.com/MinottiAlessandro/sponsor_skip" target="_blank" rel="noopener" title="Contribute on GitHub" aria-label="Contribute on GitHub">
+          <a class="gh" href="https://github.com/MinottiAlessandro/sponsor_skip" target="_blank" rel="noopener" data-i18n-title="gh_contribute" data-i18n-aria="gh_contribute" title="Contribute on GitHub" aria-label="Contribute on GitHub">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
           </a>
         </div>
@@ -63,116 +63,128 @@
       <!-- ───────────────── SKIPPING ───────────────── -->
       <section class="panel" data-panel="skipping">
         <div class="field">
-          <label for="mode2">When a sponsor is found</label>
+          <label for="mode2" data-i18n="skip_when_label">When a sponsor is found</label>
           <select id="mode2">
-            <option value="auto">Auto-skip it</option>
-            <option value="button">Show a "Skip" button</option>
-            <option value="off">Do nothing</option>
+            <option value="auto" data-i18n="skip_opt_auto">Auto-skip it</option>
+            <option value="button" data-i18n="skip_opt_button">Show a "Skip" button</option>
+            <option value="off" data-i18n="skip_opt_off">Do nothing</option>
           </select>
         </div>
         <div class="field">
-          <label for="autoSkipDelay">Auto-skip countdown (seconds)</label>
+          <label for="autoSkipDelay" data-i18n="countdown_label">Auto-skip countdown (seconds)</label>
           <input type="number" id="autoSkipDelay" min="0" max="10" step="1" />
-          <span class="hint">How long "Auto-skip in Xs" shows before jumping. 0 = instant.</span>
+          <span class="hint" data-i18n="countdown_hint">How long "Auto-skip in Xs" shows before jumping. 0 = instant.</span>
         </div>
         <div class="field">
-          <label for="countdownMode">Countdown style</label>
+          <label for="countdownMode" data-i18n="cdstyle_label">Countdown style</label>
           <select id="countdownMode">
-            <option value="grace">Grace — count down inside the ad (plays the start)</option>
-            <option value="preroll">Pre-roll — skip from the very start</option>
+            <option value="grace" data-i18n="cdstyle_grace">Grace — count down inside the ad (plays the start)</option>
+            <option value="preroll" data-i18n="cdstyle_preroll">Pre-roll — skip from the very start</option>
           </select>
         </div>
-        <div class="sub">Skip which categories</div>
-        <label class="check"><input type="checkbox" id="cat_sponsor" /> Paid sponsorships</label>
-        <label class="check"><input type="checkbox" id="cat_selfpromo" /> Self-promotion (merch / Patreon) <span class="tagsb">SponsorBlock</span></label>
-        <label class="check"><input type="checkbox" id="cat_interaction" /> Like / subscribe reminders <span class="tagsb">SponsorBlock</span></label>
-        <span class="hint">The on-device model finds paid sponsorships; self-promo &amp; reminders come from the SponsorBlock database (toggle it in the Detector tab).</span>
+        <div class="sub" data-i18n="cats_sub">Skip which categories</div>
+        <label class="check"><input type="checkbox" id="cat_sponsor" /> <span data-i18n="check_sponsor">Paid sponsorships</span></label>
+        <label class="check"><input type="checkbox" id="cat_selfpromo" /> <span data-i18n="check_selfpromo">Self-promotion (merch / Patreon)</span> <span class="tagsb">SponsorBlock</span></label>
+        <label class="check"><input type="checkbox" id="cat_interaction" /> <span data-i18n="check_interaction">Like / subscribe reminders</span> <span class="tagsb">SponsorBlock</span></label>
+        <span class="hint" data-i18n="cats_hint">The on-device model finds paid sponsorships; self-promo &amp; reminders come from the SponsorBlock database (toggle it in the Detector tab).</span>
         <div class="field">
-          <label for="minConfidence">Minimum confidence</label>
+          <label for="minConfidence" data-i18n="minconf_label">Minimum confidence</label>
           <input type="number" id="minConfidence" min="0" max="1" step="0.05" />
-          <span class="hint">0–1. Higher = fewer false skips, more missed sponsors.</span>
+          <span class="hint" data-i18n="minconf_hint">0–1. Higher = fewer false skips, more missed sponsors.</span>
         </div>
         <div class="field">
-          <label for="statusIndicator">Status indicator</label>
+          <label for="statusIndicator" data-i18n="statusind_label">Status indicator</label>
           <select id="statusIndicator">
-            <option value="both">On-page pill + toolbar badge</option>
-            <option value="page">On-page pill only</option>
-            <option value="badge">Toolbar badge only</option>
-            <option value="off">Off</option>
+            <option value="both" data-i18n="statusind_both">On-page pill + toolbar badge</option>
+            <option value="page" data-i18n="statusind_page">On-page pill only</option>
+            <option value="badge" data-i18n="statusind_badge">Toolbar badge only</option>
+            <option value="off" data-i18n="statusind_off">Off</option>
           </select>
         </div>
       </section>
 
       <!-- ───────────────── DETECTOR ───────────────── -->
       <section class="panel" data-panel="detector">
-        <label class="check"><input type="checkbox" id="useSponsorBlock" /> Use the SponsorBlock database first</label>
-        <span class="hint">Known videos get instant, human-verified skips (queried privately). Unknown videos use the on-device model.</span>
+        <label class="check"><input type="checkbox" id="useSponsorBlock" /> <span data-i18n="usesb_label">Use the SponsorBlock database first</span></label>
+        <span class="hint" data-i18n="usesb_hint">Known videos get instant, human-verified skips (queried privately). Unknown videos use the on-device model.</span>
         <div class="field">
-          <label for="detector">Detection backend</label>
+          <label for="detector" data-i18n="backend_label">Detection backend</label>
           <select id="detector">
-            <option value="local">On-device model (no setup, private)</option>
-            <option value="ollama">Local LLM via Ollama (developer)</option>
+            <option value="local" data-i18n="backend_local">On-device model (no setup, private)</option>
+            <option value="ollama" data-i18n="backend_ollama">Local LLM via Ollama (developer)</option>
           </select>
         </div>
         <div id="localRow">
           <div class="field">
-            <label for="device">Run on</label>
+            <label for="device" data-i18n="device_label">Run on</label>
             <select id="device">
-              <option value="wasm">CPU — WebAssembly (default)</option>
-              <option value="webgpu">GPU — WebGPU (experimental)</option>
+              <option value="wasm" data-i18n="device_wasm">CPU — WebAssembly (default)</option>
+              <option value="webgpu" data-i18n="device_webgpu">GPU — WebGPU (experimental)</option>
             </select>
-            <span class="hint">GPU can be faster on some machines but isn't supported everywhere; it falls back to CPU automatically. Our model is int8-quantized, so the speedup may be modest. Changing this reloads the model.</span>
+            <span class="hint" data-i18n="device_hint">GPU can be faster on some machines but isn't supported everywhere; it falls back to CPU automatically. Our model is int8-quantized, so the speedup may be modest. Changing this reloads the model.</span>
           </div>
           <div class="field">
             <div class="modelshd">
-              <label>Detection model</label>
-              <button class="linkbtn" id="refreshModels" type="button">Refresh</button>
+              <label data-i18n="model_label">Detection model</label>
+              <button class="linkbtn" id="refreshModels" type="button" data-i18n="model_refresh">Refresh</button>
             </div>
             <div id="modelList" class="modellist"></div>
             <span class="hint" id="storageUsed"></span>
           </div>
           <details class="advanced">
-            <summary>Advanced: custom model</summary>
-            <input type="text" id="customModel" placeholder="empty = use the model selected above" />
+            <summary data-i18n="advanced_summary">Advanced: custom model</summary>
+            <input type="text" id="customModel" data-i18n-placeholder="custom_placeholder" placeholder="empty = use the model selected above" />
             <span class="hint">Override with any Transformers.js ONNX token-classifier — a Hugging Face repo id (<code>user/model</code>) or URL. Labels must be O, sponsor, selfpromo, interaction.</span>
           </details>
         </div>
         <div id="ollamaRow">
           <div class="row">
-            <div class="field"><label for="endpoint">Endpoint</label>
+            <div class="field"><label for="endpoint" data-i18n="endpoint_label">Endpoint</label>
               <input type="text" id="endpoint" placeholder="http://localhost:11434/api/generate" /></div>
-            <div class="field"><label for="model">Model</label>
+            <div class="field"><label for="model" data-i18n="model_field_label">Model</label>
               <input type="text" id="model" placeholder="gemma4:latest" /></div>
           </div>
           <span class="hint">Run <code>OLLAMA_ORIGINS=* ollama serve</code> so the extension can reach it.</span>
         </div>
         <div class="field">
-          <label for="maxSegmentSeconds">Max segment length (seconds)</label>
+          <label for="maxSegmentSeconds" data-i18n="maxseg_label">Max segment length (seconds)</label>
           <input type="number" id="maxSegmentSeconds" min="30" max="1800" step="30" />
-          <span class="hint">Segments longer than this are dropped as likely errors (prevents huge over-skips).</span>
+          <span class="hint" data-i18n="maxseg_hint">Segments longer than this are dropped as likely errors (prevents huge over-skips).</span>
         </div>
-        <div class="sub">Maintenance</div>
+        <div class="sub" data-i18n="maint_sub">Maintenance</div>
         <div class="row">
-          <button class="btn" id="resetcache" type="button">Reset sponsor cache</button>
-          <button class="btn" id="opentest" type="button">Test the model</button>
+          <button class="btn" id="resetcache" type="button" data-i18n="reset_cache">Reset sponsor cache</button>
+          <button class="btn" id="opentest" type="button" data-i18n="test_model">Test the model</button>
         </div>
       </section>
 
       <!-- ───────────────── LOOK ───────────────── -->
       <section class="panel" data-panel="look">
         <div class="field">
-          <label for="theme">Theme</label>
+          <label for="theme" data-i18n="theme_label">Theme</label>
           <select id="theme">
-            <option value="auto">Auto (match system)</option>
-            <option value="light">Light</option>
-            <option value="dark">Dark</option>
+            <option value="auto" data-i18n="theme_auto">Auto (match system)</option>
+            <option value="light" data-i18n="theme_light">Light</option>
+            <option value="dark" data-i18n="theme_dark">Dark</option>
           </select>
         </div>
-        <p class="muted" style="font-size:11px">sponsor_skip detects creator-read sponsorships on-device and skips them. Yellow marks show sponsor sections on the progress bar.</p>
+        <div class="field">
+          <label for="language" data-i18n="lang_label">Language</label>
+          <select id="language">
+            <option value="auto" data-i18n="lang_auto">Auto (match browser)</option>
+            <option value="en">English</option>
+            <option value="it">Italiano</option>
+            <option value="es">Español</option>
+            <option value="fr">Français</option>
+            <option value="de">Deutsch</option>
+          </select>
+        </div>
+        <p class="muted" style="font-size:11px" data-i18n="look_footer">sponsor_skip detects creator-read sponsorships on-device and skips them. Yellow marks show sponsor sections on the progress bar.</p>
       </section>
     </main>
 
     <div id="toast" class="toast" hidden></div>
+    <script src="../src/i18n.js"></script>
     <script src="../src/defaults.js"></script>
     <script src="popup.js"></script>
   </body>
