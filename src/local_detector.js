@@ -128,9 +128,15 @@ export async function detectLocal(cues, { tokenizer, model, Tensor }, opts = {})
       probSum[ci] += sum / (te - ts);
       probCnt[ci] += 1;
     }
-    // Yield to the event loop between windows so we don't hog the shared
-    // extension renderer thread — keeps the popup responsive during analysis.
-    await new Promise((r) => setTimeout(r));
+    // No event-loop yield here. detectLocal now runs in a dedicated Web Worker
+    // (detector.worker.js) on its own thread, so this loop no longer shares a
+    // thread with the popup/offscreen document — there's nothing to keep
+    // responsive by yielding. A `setTimeout` yield here was in fact the
+    // bottleneck: timers in the (always-hidden) offscreen document and the
+    // workers it owns are throttled by Chrome to ~1/s (and ~1/min after 5 min
+    // hidden), so it inserted up to a second of idle wait after each ~15ms
+    // window — analysis crawled while the CPU sat near-idle. Run straight
+    // through and keep the worker thread busy instead.
   }
 
   const prob = probSum.map((s, i) => (probCnt[i] ? s / probCnt[i] : 0));
