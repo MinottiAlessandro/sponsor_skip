@@ -4,27 +4,33 @@ const $ = (id) => document.getElementById(id);
 let settings = { ...DEFAULTS };
 let popupVideoId = null; // the video the active tab is currently on (for submit/dismiss)
 
-// ---- tabs ---------------------------------------------------------------- //
-document.querySelectorAll(".tab").forEach((t) =>
-  t.addEventListener("click", () => {
-    document.querySelectorAll(".tab").forEach((x) => x.classList.toggle("active", x === t));
-    document.querySelectorAll(".panel").forEach((p) =>
-      p.classList.toggle("active", p.dataset.panel === t.dataset.tab)
-    );
-    if (t.dataset.tab === "detector") renderModels();
-  })
-);
+// ---- depth navigation (the rabbit hole) ---------------------------------- //
+// The popup is one linear hole: 0 surface → 1 Settings → 2 Advanced → 3 Developer.
+// Each level slides in, the crumb trail shows the descent, and the page tints
+// darker per level (popup.css keys off html[data-depth]).
+const LEVEL_KEY = ["", "nav_settings", "nav_advanced", "nav_dev"];
+let depth = 0;
+function setDepth(d) {
+  depth = Math.max(0, Math.min(LEVEL_KEY.length - 1, d));
+  document.documentElement.dataset.depth = depth;
+  $("track").style.transform = `translateX(-${depth * 100}%)`;
+  // Off-screen levels are inert so focus/tab order can't wander into them.
+  document.querySelectorAll(".level").forEach((l) =>
+    l.toggleAttribute("inert", +l.dataset.level !== depth)
+  );
+  $("crumbs").hidden = depth === 0;
+  $("trail").innerHTML = LEVEL_KEY.slice(1, depth + 1)
+    .map((k, i) => `<li><button class="crumb" data-goto="${i + 1}">${t(k)}</button></li>`)
+    .join("");
+  if (depth >= 2) renderModels(); // the model manager lives in Advanced
+}
 
 // ---- settings <-> controls ---------------------------------------------- //
 function applyControls() {
-  $("mode2").value = settings.mode;
   $("autoSkipDelay").value = settings.autoSkipDelay;
   $("countdownMode").value = settings.countdownMode;
   $("minConfidence").value = settings.minConfidence;
   $("statusIndicator").value = settings.statusIndicator;
-  $("cat_sponsor").checked = settings.categories.sponsor;
-  $("cat_selfpromo").checked = settings.categories.selfpromo;
-  $("cat_interaction").checked = settings.categories.interaction;
   $("useSponsorBlock").checked = settings.useSponsorBlock;
   $("detector").value = settings.detector;
   $("device").value = settings.device;
@@ -36,29 +42,31 @@ function applyControls() {
   $("language").value = settings.language;
   syncMode();
   syncDetectorRows();
-  syncCategoryRows();
+  syncCats();
 }
 
 function syncMode() {
   document.querySelectorAll(".modes .m").forEach((b) =>
     b.classList.toggle("active", b.dataset.mode === settings.mode)
   );
-  $("mode2").value = settings.mode;
+  $("modeCaption").textContent = t("mode_caption_" + settings.mode);
 }
 function syncDetectorRows() {
   const ollama = settings.detector === "ollama";
   $("ollamaRow").style.display = ollama ? "" : "none";
   $("localRow").style.display = ollama ? "none" : "";
+  $("customRow").style.display = ollama ? "none" : ""; // override only applies to local
 }
-// The on-device model emits sponsor segments only — self-promo & interaction come
-// solely from SponsorBlock. Grey those two out when SponsorBlock is turned off.
-function syncCategoryRows() {
+// Surface chips. The on-device model emits sponsor segments only — self-promo &
+// interaction come solely from SponsorBlock, so grey those two chips out when
+// SponsorBlock is turned off (in Advanced).
+function syncCats() {
   const sbOff = !settings.useSponsorBlock;
-  for (const c of ["selfpromo", "interaction"]) {
-    const box = $("cat_" + c);
-    box.disabled = sbOff;
-    box.closest(".check").classList.toggle("disabled", sbOff);
-  }
+  document.querySelectorAll(".chip[data-cat]").forEach((ch) => {
+    const c = ch.dataset.cat;
+    ch.classList.toggle("on", settings.categories[c] !== false);
+    ch.disabled = sbOff && c !== "sponsor";
+  });
 }
 
 const persist = () => chrome.storage.local.set({ settings });
@@ -105,20 +113,32 @@ function applyI18n() {
 }
 
 function bind() {
+  // Rabbit-hole navigation: gear dives to Settings, ‹ climbs one level, and any
+  // [data-goto] (doorways + crumbs) jumps straight to its level.
+  $("navSettings").addEventListener("click", () => setDepth(1));
+  $("navBack").addEventListener("click", () => setDepth(depth - 1));
+  document.addEventListener("click", (e) => {
+    const go = e.target.closest("[data-goto]");
+    if (go) setDepth(+go.dataset.goto);
+  });
+
   document.querySelectorAll(".modes .m").forEach((b) =>
     b.addEventListener("click", () => setMode(b.dataset.mode))
   );
-  $("mode2").addEventListener("change", () => setMode($("mode2").value));
+  document.querySelectorAll(".chip[data-cat]").forEach((ch) =>
+    ch.addEventListener("click", () => {
+      const c = ch.dataset.cat;
+      settings.categories[c] = settings.categories[c] === false;
+      persist(); syncCats(); renderStatus();
+    })
+  );
 
   const on = (id, fn, ev = "change") => $(id).addEventListener(ev, fn);
   on("autoSkipDelay", () => { settings.autoSkipDelay = parseInt($("autoSkipDelay").value, 10) || 0; persist(); });
   on("countdownMode", () => { settings.countdownMode = $("countdownMode").value; persist(); });
   on("minConfidence", () => { settings.minConfidence = parseFloat($("minConfidence").value) || 0; persist(); renderStatus(); });
   on("statusIndicator", () => { settings.statusIndicator = $("statusIndicator").value; persist(); });
-  ["sponsor", "selfpromo", "interaction"].forEach((c) =>
-    on("cat_" + c, () => { settings.categories[c] = $("cat_" + c).checked; persist(); renderStatus(); })
-  );
-  on("useSponsorBlock", () => { settings.useSponsorBlock = $("useSponsorBlock").checked; persist(); syncCategoryRows(); });
+  on("useSponsorBlock", () => { settings.useSponsorBlock = $("useSponsorBlock").checked; persist(); syncCats(); });
   on("detector", async () => {
     settings.detector = $("detector").value; syncDetectorRows(); persist();
     if (settings.detector === "ollama" && !(await ensureOptionalPermissions())) {
@@ -144,6 +164,8 @@ function bind() {
     settings.language = $("language").value; persist();
     I18N.setLang(settings.language);
     applyI18n();    // retranslate the static UI in place…
+    syncMode();     // …the mode caption…
+    setDepth(depth); // …the crumb trail…
     renderStatus(); // …and the dynamic panels (status list, model labels)
     renderModels();
   });
@@ -387,7 +409,7 @@ async function addSegmentAtPlayhead() {
   }
 }
 
-// ---- model manager (Detector tab) --------------------------------------- //
+// ---- model manager (Advanced level) -------------------------------------- //
 const escapeHtml = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 function requestHF() {
   return new Promise((res) => chrome.permissions.request({ origins: HF_HOSTS }, (g) => res(!!g)));
@@ -490,6 +512,7 @@ function toast(text) {
 // video is being analyzed (the offscreen model shares this extension's renderer
 // thread, so we must not gate interactivity behind any async/message round-trip).
 bind();
+setDepth(0); // start at the surface (also marks the deeper levels inert)
 (async () => {
   const stored = await chrome.storage.local.get(["settings", "sbVotes"]);
   settings = { ...DEFAULTS, ...(stored.settings || {}), categories: { ...DEFAULTS.categories, ...(stored.settings?.categories || {}) } };

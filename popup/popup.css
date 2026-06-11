@@ -1,4 +1,6 @@
-/* sponsor_skip popup — branded, tabbed settings + status.
+/* sponsor_skip popup — "rabbit hole" layout: one surface for everyone, then
+   Settings → Advanced → Developer sliding ever deeper. The background tints
+   darker per level so you can feel how far down you are.
    Personal look: yellow (#FFD21E) skip-accent on a YouTube-native surface. */
 :root {
   --accent: #ffd21e;
@@ -21,9 +23,20 @@ html[data-theme="dark"] {
   --danger: #ff6b6b;
 }
 
+/* Depth tint — each level down mixes a little more black into the page. Dark
+   theme needs a bigger step for it to read at all (its bg is near-black). */
+html { --depth: 0; --depth-step: 2.5%; }
+html[data-theme="dark"] { --depth-step: 16%; }
+html[data-depth="1"] { --depth: 1; }
+html[data-depth="2"] { --depth: 2; }
+html[data-depth="3"] { --depth: 3; }
+
 * { box-sizing: border-box; }
-/* Fixed-height flex column so switching tabs never needs the popup window to
-   resize (Chrome only measures the popup once, on first render). main scrolls. */
+/* The hidden attribute must always win — several hidden-able rows (crumbs,
+   addsegrow) set their own display, which would otherwise override it. */
+[hidden] { display: none !important; }
+/* Fixed-height flex column so navigating never needs the popup window to
+   resize (Chrome only measures the popup once, on first render). */
 body {
   width: 340px;
   height: 500px;
@@ -32,7 +45,8 @@ body {
   flex-direction: column;
   font: 13px/1.45 "Roboto", "YouTube Sans", system-ui, sans-serif;
   color: var(--text);
-  background: var(--bg);
+  background: color-mix(in srgb, var(--bg), #000 calc(var(--depth) * var(--depth-step)));
+  transition: background 0.22s ease;
 }
 
 /* Header / brand */
@@ -48,25 +62,47 @@ body {
 .brand { font-weight: 700; font-size: 15px; letter-spacing: 0.2px; display: flex; flex-direction: column; line-height: 1.1; }
 .brand .tag { font-weight: 500; font-size: 10px; color: var(--muted); letter-spacing: 0.3px; }
 .hd .ver { margin-left: auto; font-size: 10px; color: var(--muted); }
-
-/* Tabs */
-.tabs { flex: none; display: flex; padding: 0 8px; border-bottom: 1px solid var(--border); }
-.tab {
+/* The one way in: a gear that opens the Settings level. */
+.gear {
   appearance: none; border: 0; background: none; cursor: pointer;
-  padding: 9px 10px; font: inherit; font-weight: 600; font-size: 12px;
-  color: var(--muted); border-bottom: 2px solid transparent; margin-bottom: -1px;
+  flex: none; display: flex; padding: 5px; border-radius: 8px; color: var(--muted);
 }
-.tab:hover { color: var(--text); }
-.tab.active { color: var(--text); border-bottom-color: var(--accent); }
+.gear:hover { background: var(--surface-2); color: var(--text); }
+.gear svg { width: 18px; height: 18px; fill: currentColor; }
 
-main { flex: 1 1 auto; min-height: 0; padding: 12px 14px; overflow-y: auto; }
-.panel { display: none; }
-.panel.active { display: block; }
-/* Status tab fills the available height so the Ko-fi note can sit at the bottom. */
-.panel[data-panel="status"].active { display: flex; flex-direction: column; min-height: 100%; }
+/* Breadcrumb trail — appears below the surface, shows the descent path.
+   Crumbs are clickable to climb back up; ‹ goes up one level. */
+.crumbs { flex: none; display: flex; align-items: center; gap: 2px; padding: 4px 8px; border-bottom: 1px solid var(--border); }
+.cback {
+  appearance: none; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 16px; font-weight: 600; line-height: 1;
+  padding: 3px 9px; border-radius: 7px; color: var(--muted);
+}
+.cback:hover { background: var(--surface-2); color: var(--text); }
+.trail { display: flex; align-items: center; list-style: none; margin: 0; padding: 0; min-width: 0; }
+.trail li { display: flex; align-items: center; min-width: 0; }
+.trail li + li::before { content: "›"; color: var(--muted); font-size: 11px; padding: 0 3px; }
+.crumb {
+  appearance: none; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; color: var(--muted);
+  padding: 3px 6px; border-radius: 7px; white-space: nowrap;
+}
+.crumb:hover { background: var(--surface-2); color: var(--text); }
+.trail li:last-child .crumb { color: var(--text); cursor: default; }
+.trail li:last-child .crumb:hover { background: none; }
 
-/* Mode pills */
-.modes { display: flex; gap: 6px; margin-bottom: 10px; }
+/* The hole itself: levels sit side by side and the track slides between them. */
+main { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.track { display: flex; height: 100%; transition: transform 0.22s ease; }
+.level { flex: 0 0 100%; min-width: 0; overflow-y: auto; padding: 12px 14px; }
+@media (prefers-reduced-motion: reduce) {
+  .track, body { transition: none; }
+}
+/* Surface fills the height so the support row can sit at the bottom. */
+.level[data-level="0"] { display: flex; flex-direction: column; }
+
+/* Mode pills + their one-line caption */
+.modes { display: flex; gap: 6px; margin-bottom: 6px; }
 .modes .m {
   flex: 1; padding: 7px 4px; cursor: pointer; font: inherit; font-weight: 600;
   color: var(--text); background: var(--surface); border: 1px solid var(--border);
@@ -74,6 +110,38 @@ main { flex: 1 1 auto; min-height: 0; padding: 12px 14px; overflow-y: auto; }
 }
 .modes .m:hover { background: var(--surface-2); }
 .modes .m.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.modecap { font-size: 11px; color: var(--muted); text-align: center; min-height: 16px; margin-bottom: 8px; }
+
+/* Skip-category chips — compact toggles, full names in their tooltips. */
+.cats { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 12px; }
+.catlab { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); margin-right: 2px; }
+.chip {
+  appearance: none; cursor: pointer; font: inherit; font-size: 11px; font-weight: 600;
+  padding: 4px 9px; border-radius: 999px; border: 1px solid var(--border);
+  background: var(--surface); color: var(--muted);
+  transition: background .12s, border-color .12s, color .12s;
+}
+.chip:hover { background: var(--surface-2); }
+.chip.on {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  border-color: var(--accent); color: var(--text);
+}
+.chip.on::before { content: "✓ "; }
+.chip:disabled { opacity: .45; cursor: not-allowed; }
+
+/* Doorway to the next level down — sits at the bottom of a level. */
+.doorway {
+  display: flex; align-items: center; gap: 10px; width: 100%; margin-top: 16px;
+  padding: 10px 12px; cursor: pointer; font: inherit; text-align: left;
+  color: var(--text); background: var(--surface);
+  border: 1px solid var(--border); border-radius: 10px;
+  transition: background .12s, border-color .12s;
+}
+.doorway:hover { background: var(--surface-2); border-color: var(--muted); }
+.doorway .dtxt { min-width: 0; }
+.doorway .dtit { display: block; font-weight: 700; }
+.doorway .dsub { display: block; font-size: 10.5px; color: var(--muted); margin-top: 1px; }
+.doorway .darr { margin-left: auto; flex: none; font-size: 18px; color: var(--muted); }
 
 /* Fields */
 .field { margin: 11px 0; }
@@ -81,12 +149,6 @@ main { flex: 1 1 auto; min-height: 0; padding: 12px 14px; overflow-y: auto; }
 .hint { display: block; color: var(--muted); font-size: 11px; margin-top: 3px; }
 .check { display: flex; align-items: center; gap: 8px; font-weight: 500; margin: 8px 0; cursor: pointer; }
 .check input { accent-color: var(--accent); width: 15px; height: 15px; }
-.check.disabled { opacity: .5; cursor: not-allowed; }
-.check.disabled input { cursor: not-allowed; }
-/* "SponsorBlock" tag on the categories the on-device model doesn't produce */
-.tagsb { margin-left: auto; font-size: 9px; font-weight: 700; letter-spacing: .4px;
-  text-transform: uppercase; color: var(--muted); border: 1px solid var(--border);
-  border-radius: 6px; padding: 1px 5px; }
 select, input[type="text"], input[type="number"] {
   width: 100%; padding: 7px 9px; font: inherit; color: var(--text);
   background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
@@ -95,6 +157,7 @@ select, input[type="text"], input[type="number"] {
 .row > * { flex: 1; }
 .sub { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: .5px;
        color: var(--muted); margin: 14px 0 4px; }
+.about { font-size: 11px; margin: 14px 0 0; }
 
 button.btn {
   appearance: none; cursor: pointer; font: inherit; font-weight: 600;
@@ -105,7 +168,7 @@ button.btn:hover { background: var(--surface-2); }
 button.btn.accent { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 button.btn.sm { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
 
-/* Model manager (Detector tab) */
+/* Model manager (Advanced level) */
 .modelshd { display: flex; align-items: center; margin-bottom: 4px; }
 .modelshd label { font-weight: 600; }
 .linkbtn { appearance: none; border: 0; background: none; cursor: pointer; margin-left: auto;
@@ -136,10 +199,6 @@ button.btn.sm { padding: 4px 9px; font-size: 11px; border-radius: 7px; }
   background: var(--surface-2); }
 .model .mprog .mbar { height: 100%; background: var(--accent); transition: width .15s ease; }
 .model .mpct { font-size: 10px; color: var(--muted); font-variant-numeric: tabular-nums; min-width: 28px; }
-.advanced { margin-top: 8px; }
-.advanced > summary { cursor: pointer; font-weight: 600; font-size: 12px; color: var(--muted); }
-.advanced > summary:hover { color: var(--text); }
-.advanced input[type="text"] { margin-top: 6px; }
 a { color: #3ea6ff; cursor: pointer; text-decoration: none; }
 a:hover { text-decoration: underline; }
 .muted { color: var(--muted); }
@@ -205,8 +264,8 @@ a:hover { text-decoration: underline; }
 .confirm .cbtns .btn { flex: 1; }
 
 /* Ko-fi support note — Ko-fi coral so it stands out from the yellow theme, but kept
-   small, static, and pinned to the bottom of the Status tab so it's easy to ignore. */
-/* Support row pinned to the bottom of the Status tab: Ko-fi note + GitHub square. */
+   small, static, and pinned to the bottom of the surface so it's easy to ignore. */
+/* Support row pinned to the bottom of the surface: Ko-fi note + GitHub square. */
 .support { margin-top: auto; display: flex; align-items: stretch; gap: 8px; }
 .kofi {
   flex: 1;

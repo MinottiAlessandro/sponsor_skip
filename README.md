@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.6.0-f0a500" alt="Version 0.6.0" />
+  <img src="https://img.shields.io/badge/version-0.7.0-f0a500" alt="Version 0.7.0" />
   <img src="https://img.shields.io/badge/Manifest-V3-3367d6" alt="Manifest V3" />
   <img src="https://img.shields.io/badge/detection-100%25%20on--device-2ea44f" alt="On-device" />
   <img src="https://img.shields.io/badge/privacy-no%20servers-2ea44f" alt="Private" />
@@ -76,12 +76,22 @@ model download). Detection results are cached locally only.
 
 ## Using it
 
-Click the toolbar icon to open the popup. It has four tabs:
+Click the toolbar icon to open the popup. Everything a normal user needs is on the
+first screen; the rest is a rabbit hole that goes exactly as deep as you do — each
+level slides in with a breadcrumb trail back out, and the background tints a shade
+darker the deeper you go:
 
-- **Status** — pick how to act on sponsors (**Auto-skip · Button · Off**), see the segments found in the current video (and *how* — SponsorBlock or the on-device model, with the backend and analysis time), click a segment to jump to it, **vote / contribute** with the 👍 / 👎 buttons, **add a segment by hand**, and read any error.
-- **Skipping** — countdown length & style, which categories to skip (sponsor / self-promo / interaction), minimum confidence, and where the status indicator shows.
-- **Detector** — SponsorBlock toggle, the **model manager** (pick / download / delete on-device models), **CPU or GPU**, max segment length, **Reset sponsor cache**, **Test the model**, and advanced overrides.
-- **Look** — light / dark / auto theme.
+- **Surface** (what opens) — pick how to act on sponsors (**Auto-skip · Button · Off**),
+  toggle which categories to skip (sponsors / self-promo / reminders), see the segments
+  found in the current video (and *how* — SponsorBlock or the on-device model, with the
+  backend and analysis time), click a segment to jump to it, **vote / contribute** with
+  the 👍 / 👎 buttons, **add a segment by hand**, and read any error.
+- **⚙ Settings** (gear, top-right) — theme, language, auto-skip countdown.
+- **Settings → Advanced** — SponsorBlock toggle, countdown style, minimum confidence,
+  max segment length, status indicator, and the **model manager** (pick / download /
+  delete on-device models, **CPU or GPU**).
+- **Settings → Advanced → Developer** — Ollama backend, custom model override,
+  **Reset sponsor cache**, **Test the model**.
 
 While a video is analyzed, a small pill appears top-left of the player; when it's
 done you'll see the sponsor sections highlighted **yellow** on the progress bar. In
@@ -97,7 +107,7 @@ softer read. You can fix that right on the player:
 - **Drag the yellow marker edges** on the progress bar to adjust a sponsor's start or
   end — you get a live frame preview as you drag, and your watch position is restored
   on release.
-- **"+ Add a sponsor segment here"** (Status tab) drops a segment at the current
+- **"+ Add segment here"** (popup's first screen) drops a segment at the current
   playhead; drag its edges to fit. Handy on videos where nothing was detected.
 
 Your edits are saved per video and used for skipping immediately.
@@ -117,8 +127,8 @@ for voting/submitting — it's never shown and isn't tied to your Google account
 
 ### Choosing a model
 
-The **Detector** tab lists the available on-device models from a curated Hugging Face
-catalog. The **default is built in** and works offline with no download. You can:
+The **model manager** (⚙ Settings → Advanced) lists the available on-device models
+from a curated Hugging Face catalog. The **default is built in** and works offline with no download. You can:
 
 - **Download** an alternative or an improved model (with a progress bar),
 - **Use** any downloaded model as the active one,
@@ -144,7 +154,7 @@ a second late than cut into real content.
 
 ## Advanced
 
-All in the **Detector** tab:
+Down the rabbit hole — **⚙ Settings → Advanced**, then **→ Developer** at the bottom:
 
 - **Model manager** — switch between on-device models, download new ones from the
   Hugging Face catalog, or delete them to free space (see [Choosing a model](#choosing-a-model)).
@@ -174,7 +184,7 @@ is bundled with esbuild.
 ```
 src/        content script, background worker, offscreen model host,
             detector.worker.js (model runs here, off the main thread)
-popup/      the tabbed UI
+popup/      the UI (surface → Settings → Advanced → Developer)
 models/     bundled model catalog (offline fallback for the HF catalog)
 model/      tokenizer + config (+ onnx weights, provided via Release)
 vendor/     Transformers.js + ONNX Runtime WASM
